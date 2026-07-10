@@ -50,17 +50,12 @@ const quickActions = [
   },
 ];
 
-const heatmapDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const heatmapTimes = ['6 AM', '8 AM', '10 AM', '12 PM', '2 PM', '4 PM', '6 PM', '8 PM', '10 PM'];
-const heatmapData = [
-  [24, 42, 67, 71, 76, 84, 91, 72, 48],
-  [28, 46, 69, 74, 79, 87, 93, 76, 52],
-  [31, 49, 72, 78, 83, 89, 95, 79, 55],
-  [27, 44, 66, 73, 81, 88, 92, 75, 51],
-  [34, 52, 75, 82, 86, 94, 97, 84, 62],
-  [18, 26, 39, 47, 53, 61, 69, 58, 36],
-  [12, 19, 28, 34, 41, 48, 56, 43, 25],
-];
+const heatmapTimes = Array.from({ length: 24 }, (_, hour) => {
+  if (hour === 0) return '12 AM';
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return '12 PM';
+  return `${hour - 12} PM`;
+});
 
 const recentActivity = [
   { time: '09:15 AM', vehicle: 'KA01AB1234', action: 'Vehicle Entry', zone: 'Ground', icon: FaSignInAlt },
@@ -70,10 +65,10 @@ const recentActivity = [
 ];
 
 function getHeatmapTone(value) {
-  if (value >= 85) return 'bg-rose-600 text-white';
-  if (value >= 70) return 'bg-amber-500 text-white';
-  if (value >= 50) return 'bg-teal-600 text-white';
-  if (value >= 30) return 'bg-sky-500 text-white';
+  if (value >= 6) return 'bg-rose-600 text-white';
+  if (value >= 4) return 'bg-amber-500 text-white';
+  if (value >= 2) return 'bg-teal-600 text-white';
+  if (value >= 1) return 'bg-sky-500 text-white';
   return 'bg-slate-200 text-slate-600';
 }
 
@@ -152,6 +147,32 @@ export default function Dashboard() {
   );
   const bookedVehicles = bookings.filter((booking) => booking.status === 'Booked');
   const enteredVehicles = bookings.filter((booking) => booking.status === 'Entered');
+  const today = new Date();
+  const currentWeekdayIndex = (today.getDay() + 6) % 7; // Monday = 0
+
+  const heatmapData = heatmapDays.map((_, weekdayIndex) => {
+    const hourlyCounts = Array(24).fill(0);
+
+    // Keep all non-current weekday rows at zero.
+    if (weekdayIndex !== currentWeekdayIndex) {
+      return hourlyCounts;
+    }
+
+    bookings.forEach((booking) => {
+      if (!booking.entryTime) return;
+
+      const entryDate = new Date(booking.entryTime);
+
+      // Count only entries recorded today.
+      if (entryDate.toDateString() !== today.toDateString()) {
+        return;
+      }
+
+      hourlyCounts[entryDate.getHours()] += 1;
+    });
+
+    return hourlyCounts;
+  });
   const heroCards = [
     { label: 'Sedan Capacity', value: stats.sedanSlots, icon: FaCarAlt },
     { label: 'CSUV Capacity', value: stats.csuvSlots, icon: FaCarSide },
@@ -311,8 +332,8 @@ export default function Dashboard() {
           </div>
 
           <div className="scrollbar-thin mt-5 overflow-x-auto">
-            <div className="min-w-[820px]">
-              <div className="grid grid-cols-[110px_repeat(9,minmax(70px,1fr))] gap-2">
+            <div className="min-w-[1900px]">
+              <div className="grid grid-cols-[110px_repeat(24,minmax(70px,1fr))] gap-2">
                 <div />
                 {heatmapTimes.map((time) => (
                   <div key={time} className="text-center text-xs font-bold text-slate-400">
