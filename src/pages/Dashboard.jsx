@@ -142,9 +142,7 @@ export default function Dashboard() {
 
   const featuredSlots = parkingData.slice(0, 6);
   const availableSlots = parkingData.filter((slot) => slot.allocation === 'Available');
-  const selectedEmployee = employees.find(
-    (employee) => getEmployeeValue(employee, 'employeeId') === selectedEmployeeId,
-  );
+  const selectedEmployee = employees.find((employee) => getEmployeeValue(employee, 'employeeId') === 'selectedEmployeeId');
   const bookedVehicles = bookings.filter((booking) => booking.status === 'Booked');
   const enteredVehicles = bookings.filter((booking) => booking.status === 'Entered');
   const today = new Date();
