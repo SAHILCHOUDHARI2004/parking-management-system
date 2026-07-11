@@ -76,12 +76,15 @@ const recentActivity = [
   { time: '10:28 AM', vehicle: 'KA04GH3456', action: 'Slot Reserved', zone: 'Ground', icon: FaRegCalendarCheck },
 ];
 
-function getHeatmapTone(value) {
-  if (value >= 6) return 'bg-rose-600 text-white';
-  if (value >= 4) return 'bg-amber-500 text-white';
-  if (value >= 2) return 'bg-teal-600 text-white';
-  if (value >= 1) return 'bg-sky-500 text-white';
-  return 'bg-slate-200 text-slate-600';
+function getHeatmapTone(value, isCurrentDay) {
+  if (!isCurrentDay) {
+    return 'bg-slate-200 text-slate-600';
+  }
+
+  if (value > 80) return 'bg-rose-600 text-white';
+  if (value > 50) return 'bg-amber-500 text-white';
+
+  return 'bg-emerald-600 text-white';
 }
 
 function getZoneSlots(zone, slots) {
@@ -182,28 +185,62 @@ export default function Dashboard() {
   const today = new Date();
   const currentWeekdayIndex = (today.getDay() + 6) % 7; // Monday = 0
 
-  const heatmapData = heatmapDays.map((_, weekdayIndex) => {
-    const hourlyCounts = Array(24).fill(0);
+  const today = new Date();
+  const currentWeekdayIndex = (today.getDay() + 6) % 7; // Monday = 0
+  const totalParkingSlots = parkingData.length;
 
-    // Keep all non-current weekday rows at zero.
+  const heatmapData = heatmapDays.map((_, weekdayIndex) => {
+    const hourlyOccupancy = Array(24).fill(0);
+
+    // Every weekday except today remains neutral at 0%.
     if (weekdayIndex !== currentWeekdayIndex) {
-      return hourlyCounts;
+      return hourlyOccupancy;
     }
 
-    bookings.forEach((booking) => {
-      if (!booking.entryTime) return;
+    return hourlyOccupancy.map((_, hour) => {
+      const hourStart = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        hour,
+        0,
+        0,
+      );
 
-      const entryDate = new Date(booking.entryTime);
+      const hourEnd = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        hour + 1,
+        0,
+        0,
+      );
 
-      // Count only entries recorded today.
-      if (entryDate.toDateString() !== today.toDateString()) {
-        return;
+      // Future hours have no actual live parking data yet.
+      if (hourStart > today) {
+        return 0;
       }
 
-      hourlyCounts[entryDate.getHours()] += 1;
-    });
+      const occupiedSlots = bookings.filter((booking) => {
+        const occupiedFrom = new Date(booking.bookedAt || booking.entryTime);
 
-    return hourlyCounts;
+        if (Number.isNaN(occupiedFrom.getTime()) || occupiedFrom >= hourEnd) {
+          return false;
+        }
+
+        if (!booking.exitTime) {
+          return true;
+        }
+
+        const occupiedUntil = new Date(booking.exitTime);
+
+        return Number.isNaN(occupiedUntil.getTime()) || occupiedUntil >= hourStart;
+      }).length;
+
+      return totalParkingSlots
+        ? Math.round((occupiedSlots / totalParkingSlots) * 100)
+        : 0;
+    });
   });
 
   const heroCards = [
@@ -383,7 +420,7 @@ export default function Dashboard() {
                     {heatmapData[dayIndex].map((value, valueIndex) => (
                       <div
                         key={`${day}-${heatmapTimes[valueIndex]}`}
-                        className={`flex h-12 items-center justify-center rounded-md text-xs font-bold shadow-sm ${getHeatmapTone(value)}`}
+                        className={`flex h-12 items-center justify-center rounded-md text-xs font-bold shadow-sm ${getHeatmapTone(value, dayIndex=== currentWeekdayIndex)}`}
                         title={`${day} ${heatmapTimes[valueIndex]}: ${value}% occupied`}
                       >
                         {value}%
