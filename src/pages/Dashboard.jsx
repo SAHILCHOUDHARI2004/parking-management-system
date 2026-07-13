@@ -164,20 +164,28 @@ export default function Dashboard() {
     (slot) => basementFilter === 'All' || slot.basement === basementFilter,
   );
 
-  const totalSlotPages = Math.max(1, Math.ceil(basementFilteredSlots.length / SLOTS_PER_PAGE));
+  // Booked/occupied slots first, then available ones - order preserved
+  // within each group.
+  const sortedFilteredSlots = [...basementFilteredSlots].sort((a, b) => {
+    const aAvailable = a.allocation === 'Available' ? 1 : 0;
+    const bAvailable = b.allocation === 'Available' ? 1 : 0;
+    return aAvailable - bAvailable;
+  });
+
+  const totalSlotPages = Math.max(1, Math.ceil(sortedFilteredSlots.length / SLOTS_PER_PAGE));
   const currentSlotPage = Math.min(slotPage, totalSlotPages);
 
   // Only ever render one page (10 slots) at a time instead of the full
   // inventory - Previous / Next below step through the rest.
-  const liveParkingSlots = basementFilteredSlots.slice(
+  const liveParkingSlots = sortedFilteredSlots.slice(
     (currentSlotPage - 1) * SLOTS_PER_PAGE,
     currentSlotPage * SLOTS_PER_PAGE,
   );
 
-  const slotPageRangeStart = basementFilteredSlots.length
+  const slotPageRangeStart = sortedFilteredSlots.length
     ? (currentSlotPage - 1) * SLOTS_PER_PAGE + 1
     : 0;
-  const slotPageRangeEnd = Math.min(currentSlotPage * SLOTS_PER_PAGE, basementFilteredSlots.length);
+  const slotPageRangeEnd = Math.min(currentSlotPage * SLOTS_PER_PAGE, sortedFilteredSlots.length);
 
   const occupancyChartData = ['All', 'Sedan', 'CSUV'].map((vehicleType) => {
     const slots =

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MdDirectionsCar, MdVideocam } from 'react-icons/md'
-import { getAllocationColor, getParkingTypeColor } from '../utils/helpers'
+import { getParkingTypeColor } from '../utils/helpers'
 
 // Tries to find booking details linked to this slot without touching any
 // booking logic - just reads existing data so the tooltip has something to
@@ -40,9 +40,27 @@ function resolveSlotBookingInfo(slot, bookings) {
   }
 }
 
+// Explicit two-color scheme: green = available, orange = booked/occupied
+// (anything that isn't "Available" - Allocated, Reserved, etc.).
+function getSlotVisualStyle(allocation) {
+  if (allocation === 'Available') {
+    return {
+      bg: 'bg-emerald-100',
+      text: 'text-emerald-700',
+      dot: 'bg-emerald-500',
+    }
+  }
+
+  return {
+    bg: 'bg-amber-100',
+    text: 'text-amber-700',
+    dot: 'bg-amber-500',
+  }
+}
+
 export default function ParkingSlotCard({ slot, bookings }) {
   const [showTooltip, setShowTooltip] = useState(false)
-  const allocationStyle = getAllocationColor(slot.allocation)
+  const slotStyle = getSlotVisualStyle(slot.allocation)
   const parkingTypeStyle = getParkingTypeColor(slot.parkingType)
   const bookingInfo = resolveSlotBookingInfo(slot, bookings)
 
@@ -76,17 +94,17 @@ export default function ParkingSlotCard({ slot, bookings }) {
       <button
         type="button"
         title={fullLabel}
-        className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-center transition-transform duration-150 sm:h-11 sm:w-11 ${allocationStyle.bg} ${allocationStyle.text} ${showTooltip ? 'z-20 scale-110 shadow-md' : ''}`}
+        className={`flex h-7 w-7 flex-col items-center justify-center rounded border text-center transition-transform duration-150 sm:h-8 sm:w-8 ${slotStyle.bg} ${slotStyle.text} ${showTooltip ? 'z-20 scale-125 shadow-md' : ''}`}
         style={{ borderColor: 'currentColor' }}
       >
-        <span className="px-0.5 text-[8px] font-bold leading-[1.05] sm:text-[9px]">{shortLabel}</span>
+        <span className="px-0.5 text-[6.5px] font-bold leading-[1.05] sm:text-[7px]">{shortLabel}</span>
       </button>
 
       {showTooltip && (
         <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-lg">
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
             <span className="text-sm font-bold text-slate-950">{fullLabel}</span>
-            <span className={`badge ${allocationStyle.bg} ${allocationStyle.text}`}>{slot.allocation}</span>
+            <span className={`badge ${slotStyle.bg} ${slotStyle.text}`}>{slot.allocation}</span>
           </div>
 
           <dl className="mt-2 space-y-1">
