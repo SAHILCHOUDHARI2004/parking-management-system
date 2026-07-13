@@ -1,54 +1,107 @@
-const statusStyles = {
-  Available: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-400',
-  Booked: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-400',
-  Occupied: 'border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-400',
-  Reserved: 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-400',
-  Default: 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400',
-};
+import { MdDirectionsCar, MdVideocam } from 'react-icons/md'
+import { getAllocationColor, getParkingTypeColor } from '../utils/helpers'
 
-function getSlotStatus(slot, booking) {
-  if (booking?.status === 'Booked') return 'Booked';
-  if (booking?.status === 'Entered') return 'Occupied';
-  if (slot.allocation === 'Available') return 'Available';
-  if (slot.allocation === 'Allocated') return 'Occupied';
-  if (slot.allocation === 'Reserved') return 'Reserved';
-  return slot.allocation || 'Default';
+// Tries to find booking details linked to this slot without touching any
+// booking logic - just reads existing data so the tooltip has something to
+// show. Falls back gracefully if a field isn't present.
+function resolveSlotBookingInfo(slot, bookings) {
+  if (Array.isArray(bookings) && bookings.length) {
+    const activeStatuses = ['Booked', 'Entered']
+    const matches = bookings.filter((booking) => {
+      if (booking.slotId && slot.id) return booking.slotId === slot.id
+      return booking.slotNumber === slot.slotNumber && booking.basement === slot.basement
+    })
+
+    const match =
+      matches.find((booking) => activeStatuses.includes(booking.status)) ||
+      matches[matches.length - 1]
+
+    if (match) {
+      return {
+        employeeName: match.employeeName,
+        employeeId: match.employeeId,
+        department: match.department,
+        vehicleNumber: match.vehicleNumber,
+        vehicleType: match.vehicleType || slot.vehicleSlotType,
+        status: match.status,
+      }
+    }
+  }
+
+  // Fall back to fields that may already live directly on the slot record.
+  return {
+    employeeName: slot.employeeName,
+    employeeId: slot.employeeId,
+    department: slot.department,
+    vehicleNumber: slot.vehicleNumber,
+    vehicleType: slot.vehicleSlotType,
+    status: undefined,
+  }
 }
 
-export default function ParkingSlotCard({ slot, booking }) {
-  const status = getSlotStatus(slot, booking);
-  const style = statusStyles[status] || statusStyles.Default;
-  const details = [
-    ['Employee Name', booking?.employeeName],
-    ['Employee ID', booking?.employeeId],
-    ['Vehicle Number', booking?.vehicleNumber],
-    ['Vehicle Type', slot.vehicleSlotType || slot.vehicleType],
-    ['Department', booking?.department],
-    ['Slot Number', slot.slotNumber],
-    ['Camera', slot.cameraNumber],
-    ['Parking Status', status],
-    ['Basement', slot.basement],
-  ].filter(([, value]) => value);
+export default function ParkingSlotCard({ slot, bookings }) {
+  const allocationStyle = getAllocationColor(slot.allocation)
+  const parkingTypeStyle = getParkingTypeColor(slot.parkingType)
+  const bookingInfo = resolveSlotBookingInfo(slot, bookings)
+
+  const label = slot.slotNumber?.includes?.(slot.basement)
+    ? slot.slotNumber
+    : [slot.basement, slot.slotNumber].filter(Boolean).join('-')
+
+  const tooltipRows = [
+    { label: 'Employee Name', value: bookingInfo.employeeName },
+    { label: 'Employee ID', value: bookingInfo.employeeId },
+    { label: 'Department', value: bookingInfo.department },
+    { label: 'Vehicle Number', value: bookingInfo.vehicleNumber },
+    { label: 'Vehicle Type', value: bookingInfo.vehicleType },
+    { label: 'Slot Number', value: slot.slotNumber },
+    { label: 'Basement', value: slot.basement },
+    { label: 'Booking Status', value: bookingInfo.status || slot.allocation },
+    { label: 'Camera', value: slot.cameraNumber },
+  ].filter((row) => row.value !== undefined && row.value !== null && row.value !== '')
 
   return (
-    <article className="group relative">
+    <div className="group/slot relative">
       <div
-        className={`flex min-h-12 items-center justify-center rounded-md border px-2 py-2 text-center text-xs font-bold shadow-sm transition ${style}`}
-        tabIndex={0}
+        className={`flex aspect-square w-full cursor-default flex-col items-center justify-center rounded-md border text-center transition-transform duration-150 group-hover/slot:scale-105 group-hover/slot:shadow-md ${allocationStyle.bg} ${allocationStyle.text}`}
+        style={{ borderColor: 'currentColor' }}
       >
-        {slot.slotNumber}
+        <span className="px-0.5 text-[10px] font-bold leading-tight sm:text-[11px]">{label}</span>
+        <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${allocationStyle.dot}`} />
       </div>
 
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-slate-950 p-3 text-left text-xs text-slate-100 shadow-xl group-hover:block group-focus-within:block">
-        <div className="space-y-1.5">
-          {details.map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-3">
-              <span className="text-slate-400">{label}</span>
-              <span className="max-w-[145px] text-right font-semibold text-white">{value}</span>
-            </div>
-          ))}
+      <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-left opacity-0 shadow-lg transition-opacity duration-150 group-hover/slot:opacity-100">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <span className="text-sm font-bold text-slate-950">{label}</span>
+          <span className={`badge ${allocationStyle.bg} ${allocationStyle.text}`}>{slot.allocation}</span>
+        </div>
+
+        <dl className="mt-2 space-y-1">
+          {tooltipRows.length ? (
+            tooltipRows.map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 text-xs">
+                <dt className="font-semibold text-slate-400">{row.label}</dt>
+                <dd className="truncate font-semibold text-slate-700">{row.value}</dd>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs font-semibold text-slate-400">No additional details available.</p>
+          )}
+        </dl>
+
+        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <MdDirectionsCar className="h-3.5 w-3.5 text-slate-400" />
+            <span className={`badge ${parkingTypeStyle}`}>{slot.parkingType}</span>
+          </span>
+          {slot.cameraNumber && (
+            <span className="flex items-center gap-1">
+              <MdVideocam className="h-3.5 w-3.5 text-slate-400" />
+              {slot.cameraNumber}
+            </span>
+          )}
         </div>
       </div>
-    </article>
-  );
+    </div>
+  )
 }
