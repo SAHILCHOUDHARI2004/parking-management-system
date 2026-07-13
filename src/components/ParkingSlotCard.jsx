@@ -1,43 +1,54 @@
-import { MdDirectionsCar, MdVideocam } from 'react-icons/md'
-import { getAllocationColor, getParkingTypeColor } from '../utils/helpers'
+const statusStyles = {
+  Available: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-400',
+  Booked: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-400',
+  Occupied: 'border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-400',
+  Reserved: 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-400',
+  Default: 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400',
+};
 
-export default function ParkingSlotCard({ slot }) {
-  const allocationStyle = getAllocationColor(slot.allocation)
-  const parkingTypeStyle = getParkingTypeColor(slot.parkingType)
-  const isVacant = slot.allocation === 'Vacant'
+function getSlotStatus(slot, booking) {
+  if (booking?.status === 'Booked') return 'Booked';
+  if (booking?.status === 'Entered') return 'Occupied';
+  if (slot.allocation === 'Available') return 'Available';
+  if (slot.allocation === 'Allocated') return 'Occupied';
+  if (slot.allocation === 'Reserved') return 'Reserved';
+  return slot.allocation || 'Default';
+}
+
+export default function ParkingSlotCard({ slot, booking }) {
+  const status = getSlotStatus(slot, booking);
+  const style = statusStyles[status] || statusStyles.Default;
+  const details = [
+    ['Employee Name', booking?.employeeName],
+    ['Employee ID', booking?.employeeId],
+    ['Vehicle Number', booking?.vehicleNumber],
+    ['Vehicle Type', slot.vehicleSlotType || slot.vehicleType],
+    ['Department', booking?.department],
+    ['Slot Number', slot.slotNumber],
+    ['Camera', slot.cameraNumber],
+    ['Parking Status', status],
+    ['Basement', slot.basement],
+  ].filter(([, value]) => value);
 
   return (
-    <div
-      className={`card group relative overflow-hidden p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-card-hover ${
-        isVacant ? 'ring-1 ring-teal-200' : ''
-      }`}
-    >
-      {/* Status stripe */}
-      <div className={`absolute inset-x-0 top-0 h-1 ${allocationStyle.dot}`} />
+    <article className="group relative">
+      <div
+        className={`flex min-h-12 items-center justify-center rounded-md border px-2 py-2 text-center text-xs font-bold shadow-sm transition ${style}`}
+        tabIndex={0}
+      >
+        {slot.slotNumber}
+      </div>
 
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-navy-400">{slot.basement}</p>
-          <p className="text-lg font-bold text-navy-900">{slot.slotNumber}</p>
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-slate-950 p-3 text-left text-xs text-slate-100 shadow-xl group-hover:block group-focus-within:block">
+        <div className="space-y-1.5">
+          {details.map(([label, value]) => (
+            <div key={label} className="flex justify-between gap-3">
+              <span className="text-slate-400">{label}</span>
+              <span className="max-w-[145px] text-right font-semibold text-white">{value}</span>
+            </div>
+          ))}
         </div>
-        <span className={`badge ${allocationStyle.bg} ${allocationStyle.text}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${allocationStyle.dot}`} />
-          {slot.allocation}
-        </span>
       </div>
-
-      <div className="mt-4 flex items-center justify-between border-t border-navy-50 pt-3">
-        <div className="flex items-center gap-1.5 text-sm text-navy-600">
-          <MdDirectionsCar className="h-4 w-4 text-navy-400" />
-          {slot.vehicleSlotType}
-        </div>
-        <span className={`badge ${parkingTypeStyle}`}>{slot.parkingType}</span>
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5 text-xs text-navy-400">
-        <MdVideocam className="h-3.5 w-3.5" />
-        {slot.cameraNumber}
-      </div>
-    </div>
-  )
+    </article>
+  );
 }
