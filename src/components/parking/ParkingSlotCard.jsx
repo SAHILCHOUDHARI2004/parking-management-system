@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { MdDirectionsCar, MdVideocam } from 'react-icons/md'
-import { getParkingTypeColor } from '../utils/helpers'
+import { getParkingTypeColor } from '../../utils/helpers';
 
 // Tries to find booking details linked to this slot without touching any
 // booking logic - just reads existing data so the tooltip has something to
