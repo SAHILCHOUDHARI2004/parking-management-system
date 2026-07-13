@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { MdDirectionsCar, MdVideocam } from 'react-icons/md'
 import { getAllocationColor, getParkingTypeColor } from '../utils/helpers'
 
@@ -40,13 +41,17 @@ function resolveSlotBookingInfo(slot, bookings) {
 }
 
 export default function ParkingSlotCard({ slot, bookings }) {
+  const [showTooltip, setShowTooltip] = useState(false)
   const allocationStyle = getAllocationColor(slot.allocation)
   const parkingTypeStyle = getParkingTypeColor(slot.parkingType)
   const bookingInfo = resolveSlotBookingInfo(slot, bookings)
 
-  const label = slot.slotNumber?.includes?.(slot.basement)
-    ? slot.slotNumber
-    : [slot.basement, slot.slotNumber].filter(Boolean).join('-')
+  const fullLabel = [slot.basement, slot.slotNumber].filter(Boolean).join('-')
+  // Basement is already implied by the filter/section context, so the tiny
+  // icon only needs to show the short slot code (e.g. "P01-S1").
+  const shortLabel = slot.slotNumber?.startsWith?.(`${slot.basement}-`)
+    ? slot.slotNumber.slice(slot.basement.length + 1)
+    : slot.slotNumber || fullLabel
 
   const tooltipRows = [
     { label: 'Employee Name', value: bookingInfo.employeeName },
@@ -61,47 +66,56 @@ export default function ParkingSlotCard({ slot, bookings }) {
   ].filter((row) => row.value !== undefined && row.value !== null && row.value !== '')
 
   return (
-    <div className="group/slot relative">
-      <div
-        className={`flex aspect-square w-full cursor-default flex-col items-center justify-center rounded-md border text-center transition-transform duration-150 group-hover/slot:scale-105 group-hover/slot:shadow-md ${allocationStyle.bg} ${allocationStyle.text}`}
+    <div
+      className="relative inline-flex"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      onFocus={() => setShowTooltip(true)}
+      onBlur={() => setShowTooltip(false)}
+    >
+      <button
+        type="button"
+        title={fullLabel}
+        className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-center transition-transform duration-150 sm:h-11 sm:w-11 ${allocationStyle.bg} ${allocationStyle.text} ${showTooltip ? 'z-20 scale-110 shadow-md' : ''}`}
         style={{ borderColor: 'currentColor' }}
       >
-        <span className="px-0.5 text-[10px] font-bold leading-tight sm:text-[11px]">{label}</span>
-        <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${allocationStyle.dot}`} />
-      </div>
+        <span className="px-0.5 text-[8px] font-bold leading-[1.05] sm:text-[9px]">{shortLabel}</span>
+      </button>
 
-      <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-left opacity-0 shadow-lg transition-opacity duration-150 group-hover/slot:opacity-100">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-          <span className="text-sm font-bold text-slate-950">{label}</span>
-          <span className={`badge ${allocationStyle.bg} ${allocationStyle.text}`}>{slot.allocation}</span>
-        </div>
+      {showTooltip && (
+        <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-lg">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+            <span className="text-sm font-bold text-slate-950">{fullLabel}</span>
+            <span className={`badge ${allocationStyle.bg} ${allocationStyle.text}`}>{slot.allocation}</span>
+          </div>
 
-        <dl className="mt-2 space-y-1">
-          {tooltipRows.length ? (
-            tooltipRows.map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-3 text-xs">
-                <dt className="font-semibold text-slate-400">{row.label}</dt>
-                <dd className="truncate font-semibold text-slate-700">{row.value}</dd>
-              </div>
-            ))
-          ) : (
-            <p className="text-xs font-semibold text-slate-400">No additional details available.</p>
-          )}
-        </dl>
+          <dl className="mt-2 space-y-1">
+            {tooltipRows.length ? (
+              tooltipRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3 text-xs">
+                  <dt className="font-semibold text-slate-400">{row.label}</dt>
+                  <dd className="truncate font-semibold text-slate-700">{row.value}</dd>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs font-semibold text-slate-400">No additional details available.</p>
+            )}
+          </dl>
 
-        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <MdDirectionsCar className="h-3.5 w-3.5 text-slate-400" />
-            <span className={`badge ${parkingTypeStyle}`}>{slot.parkingType}</span>
-          </span>
-          {slot.cameraNumber && (
-            <span className="flex items-center gap-1">
-              <MdVideocam className="h-3.5 w-3.5 text-slate-400" />
-              {slot.cameraNumber}
+          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <MdDirectionsCar className="h-3.5 w-3.5 text-slate-400" />
+              <span className={`badge ${parkingTypeStyle}`}>{slot.parkingType}</span>
             </span>
-          )}
+            {slot.cameraNumber && (
+              <span className="flex items-center gap-1">
+                <MdVideocam className="h-3.5 w-3.5 text-slate-400" />
+                {slot.cameraNumber}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

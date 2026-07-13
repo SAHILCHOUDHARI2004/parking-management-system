@@ -77,6 +77,7 @@ const recentActivity = [
 ];
 
 const basementFilters = ['All', 'B1', 'B2', 'B3'];
+const SLOTS_PER_PAGE = 10;
 
 function getHeatmapTone(value, isCurrentDay) {
   if (!isCurrentDay) {
@@ -109,7 +110,7 @@ export default function Dashboard() {
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [operationError, setOperationError] = useState('');
   const [basementFilter, setBasementFilter] = useState('All');
-  const [slotRangeFilter, setSlotRangeFilter] = useState('All');
+  const [slotPage, setSlotPage] = useState(1);
   const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100);
   const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100);
 
@@ -159,32 +160,24 @@ export default function Dashboard() {
     return { status, count, percentage };
   });
 
-  // Ranges are based on each slot's position in the full inventory list
-  // (1-10, 11-20, ...), independent of the basement filter, so both filters
-  // can be combined.
-  const slotRangeOptions = useMemo(() => {
-    const total = parkingData.length;
-    const ranges = ['All'];
+  const basementFilteredSlots = parkingData.filter(
+    (slot) => basementFilter === 'All' || slot.basement === basementFilter,
+  );
 
-    for (let start = 1; start <= total; start += 10) {
-      const end = Math.min(start + 9, total);
-      ranges.push(`${start}-${end}`);
-    }
+  const totalSlotPages = Math.max(1, Math.ceil(basementFilteredSlots.length / SLOTS_PER_PAGE));
+  const currentSlotPage = Math.min(slotPage, totalSlotPages);
 
-    return ranges;
-  }, [parkingData.length]);
+  // Only ever render one page (10 slots) at a time instead of the full
+  // inventory - Previous / Next below step through the rest.
+  const liveParkingSlots = basementFilteredSlots.slice(
+    (currentSlotPage - 1) * SLOTS_PER_PAGE,
+    currentSlotPage * SLOTS_PER_PAGE,
+  );
 
-  const liveParkingSlots = parkingData.filter((slot, index) => {
-    const matchesBasement = basementFilter === 'All' || slot.basement === basementFilter;
-
-    if (!matchesBasement) return false;
-    if (slotRangeFilter === 'All') return true;
-
-    const [rangeStart, rangeEnd] = slotRangeFilter.split('-').map(Number);
-    const position = index + 1;
-
-    return position >= rangeStart && position <= rangeEnd;
-  });
+  const slotPageRangeStart = basementFilteredSlots.length
+    ? (currentSlotPage - 1) * SLOTS_PER_PAGE + 1
+    : 0;
+  const slotPageRangeEnd = Math.min(currentSlotPage * SLOTS_PER_PAGE, basementFilteredSlots.length);
 
   const occupancyChartData = ['All', 'Sedan', 'CSUV'].map((vehicleType) => {
     const slots =
@@ -543,7 +536,10 @@ export default function Dashboard() {
                     name="basementFilter"
                     value={basement}
                     checked={basementFilter === basement}
-                    onChange={(event) => setBasementFilter(event.target.value)}
+                    onChange={(event) => {
+                      setBasementFilter(event.target.value);
+                      setSlotPage(1);
+                    }}
                     className="accent-teal-700"
                   />
                   {basement}
@@ -551,35 +547,52 @@ export default function Dashboard() {
               ))}
             </div>
 
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 outline-none focus:border-teal-600"
-              value={slotRangeFilter}
-              onChange={(event) => setSlotRangeFilter(event.target.value)}
-              aria-label="Filter parking slots by range"
-            >
-              {slotRangeOptions.map((range) => (
-                <option key={range} value={range}>
-                  {range === 'All' ? 'All Ranges' : range}
-                </option>
-              ))}
-            </select>
-
             <span className="rounded-full bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">
-              {liveParkingSlots.length} slots
+              {basementFilteredSlots.length} slots
             </span>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-[repeat(14,minmax(0,1fr))] xl:grid-cols-[repeat(16,minmax(0,1fr))]">
+        <div className="mt-4 flex flex-wrap gap-2.5">
           {liveParkingSlots.map((slot) => (
             <ParkingSlotCard key={slot.id} slot={slot} bookings={bookings} />
           ))}
         </div>
 
-        {liveParkingSlots.length === 0 && (
+        {basementFilteredSlots.length === 0 && (
           <p className="py-8 text-center text-sm font-semibold text-slate-500">
-            No slots match the selected filters.
+            No slots match the selected filter.
           </p>
+        )}
+
+        {basementFilteredSlots.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-semibold text-slate-500">
+              Showing {slotPageRangeStart}&ndash;{slotPageRangeEnd} of {basementFilteredSlots.length} slots
+            </p>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={currentSlotPage === 1}
+                onClick={() => setSlotPage((page) => Math.max(1, page - 1))}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <span className="text-xs font-semibold text-slate-500">
+                Page {currentSlotPage} of {totalSlotPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentSlotPage === totalSlotPages}
+                onClick={() => setSlotPage((page) => Math.min(totalSlotPages, page + 1))}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </section>
 
