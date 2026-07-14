@@ -8,6 +8,7 @@ import {
   FaParking,
   FaRegCalendarCheck,
   FaRoute,
+  FaSearch,
   FaSignInAlt,
   FaSignOutAlt,
   FaUserTie,
@@ -110,6 +111,12 @@ export default function Dashboard() {
   const [operationError, setOperationError] = useState('');
   const [basementFilter, setBasementFilter] = useState('All');
   const [slotPage, setSlotPage] = useState(1);
+  // Employee autocomplete (Book Parking dialog only). `employeeSearchText`
+  // is the single input's text - while typing it's the search query, and
+  // once an employee is picked it displays that employee's label. Kept
+  // fully separate from `employeeQuery` (Employee Summary table search).
+  const [employeeSearchText, setEmployeeSearchText] = useState('');
+  const [isEmployeeResultsOpen, setIsEmployeeResultsOpen] = useState(false);
   const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100);
   const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100);
 
@@ -159,6 +166,26 @@ export default function Dashboard() {
     () => employees.filter((employee) => !activeBookingEmployeeIds.has(getEmployeeValue(employee, 'employeeId'))),
     [employees, activeBookingEmployeeIds],
   );
+
+  // Autocomplete results for the Book Parking dialog, filtered from the
+  // existing `bookableEmployees` list (which already hides Booked/Entered
+  // employees) by Employee Name or Vehicle Number, case-insensitive. This
+  // does not change who is eligible to be booked - only what's shown
+  // while typing.
+  const employeeAutocompleteResults = useMemo(() => {
+    const normalizedSearch = employeeSearchText.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return bookableEmployees;
+    }
+
+    return bookableEmployees.filter((employee) => {
+      const name = String(getEmployeeValue(employee, 'employeeName') || '').toLowerCase();
+      const vehicleNumber = String(getEmployeeValue(employee, 'vehicleNumber') || '').toLowerCase();
+
+      return name.includes(normalizedSearch) || vehicleNumber.includes(normalizedSearch);
+    });
+  }, [bookableEmployees, employeeSearchText]);
 
   const zoneAvailability = ['Ground', 'Puzzle', 'Stack'].map((zone) => {
     const zoneSlots = getZoneSlots(zone, parkingData);
@@ -459,6 +486,8 @@ export default function Dashboard() {
               setOperationError('');
               setSelectedEmployeeId('');
               setSelectedSlotId('');
+              setEmployeeSearchText('');
+              setIsEmployeeResultsOpen(false);
             }}
           >
             <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
@@ -728,7 +757,11 @@ export default function Dashboard() {
 
       <Modal
         isOpen={Boolean(operation)}
-        onClose={() => setOperation(null)}
+        onClose={() => {
+          setOperation(null);
+          setEmployeeSearchText('');
+          setIsEmployeeResultsOpen(false);
+        }}
         title={operation || ''}
         size="lg"
       >
@@ -751,26 +784,72 @@ export default function Dashboard() {
               }
             }}
           >
-            <div>
+            <div className="relative">
               <label className="text-sm font-bold text-slate-700">Employee</label>
-              <select
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-600"
-                value={selectedEmployeeId}
-                onChange={(event) => setSelectedEmployeeId(event.target.value)}
-              >
-                <option value="">Select an employee</option>
 
-                {bookableEmployees.map((employee) => {
-                  const id = getEmployeeValue(employee, 'employeeId');
+              {/* Single searchable autocomplete input. Typing filters by
+                  Employee Name or Vehicle Number in real time; clicking a
+                  result selects that employee immediately - no separate
+                  dropdown, no "Select Employee" click. Booking validation
+                  still reads from `selectedEmployeeId` exactly as before. */}
+              <div className="relative mt-2">
+                <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400" />
+                <input
+                  type="text"
+                  value={employeeSearchText}
+                  onChange={(event) => {
+                    setEmployeeSearchText(event.target.value);
+                    setSelectedEmployeeId('');
+                    setIsEmployeeResultsOpen(true);
+                  }}
+                  onFocus={() => setIsEmployeeResultsOpen(true)}
+                  onBlur={() => {
+                    // Small delay so a click on a result registers before
+                    // the list closes.
+                    window.setTimeout(() => setIsEmployeeResultsOpen(false), 120);
+                  }}
+                  placeholder="Search Employee by Name or Vehicle Number..."
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-teal-600"
+                />
+              </div>
 
-                  return (
-                    <option key={id} value={id}>
-                      {id} - {getEmployeeValue(employee, 'employeeName')} (
-                      {getEmployeeValue(employee, 'vehicleNumber') || 'No vehicle'})
-                    </option>
-                  );
-                })}
-              </select>
+              {isEmployeeResultsOpen && (
+                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {employeeAutocompleteResults.length > 0 ? (
+                    employeeAutocompleteResults.map((employee) => {
+                      const id = getEmployeeValue(employee, 'employeeId');
+                      const name = getEmployeeValue(employee, 'employeeName');
+                      const vehicleNumber = getEmployeeValue(employee, 'vehicleNumber');
+
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          // onMouseDown fires before the input's onBlur, so
+                          // the click registers before the list closes.
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setSelectedEmployeeId(id);
+                            setEmployeeSearchText(`${name} - ${id} (${vehicleNumber || 'No vehicle'})`);
+                            setIsEmployeeResultsOpen(false);
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-teal-50"
+                        >
+                          <span className="text-sm font-bold text-slate-900">{name}</span>
+                          <span className="text-xs font-semibold text-slate-500">
+                            {id} &middot; {vehicleNumber || 'No vehicle'}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="px-3 py-3 text-sm font-semibold text-slate-500">
+                      No matching employees found.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
