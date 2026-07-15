@@ -60,6 +60,22 @@ export async function createParkingSlot(slot) {
   });
 }
 
+export async function updateParkingSlot(id, slot) {
+  return api(`/api/parking-slots/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      basement: slot.basement,
+      slot_number: slot.slotNumber,
+      vehicle_type: slot.vehicleSlotType,
+      parking_type: slot.parkingType,
+      camera_number: slot.cameraNumber || null,
+      puzzle_number: slot.puzzleNumber || null,
+      height: slot.height || null,
+      status: slot.allocation === 'Maintenance' ? 'Maintenance' : 'Available'
+    })
+  });
+}
+
 export function useParkingStore() {
   const [snapshot, setSnapshot] = useState({ slots: [], bookings: [] });
   const [error, setError] = useState('');

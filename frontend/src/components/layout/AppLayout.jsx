@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  FaCarSide,
   FaChartPie,
   FaChevronDown,
   FaParking,
@@ -55,11 +54,13 @@ export default function AppLayout({ user, onLogout }) {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-slate-200 bg-white lg:block">
         <div className="flex h-full flex-col">
           <div className="flex h-20 items-center gap-3 border-b border-slate-200 px-6">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-700 text-white">
-              <FaCarSide className="text-xl" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-900/20">
+              <FaParking className="text-xl" />
             </div>
             <div>
-              <p className="text-base font-bold text-slate-950">ParkWise PMS</p>
+              <p className="text-base font-extrabold leading-tight text-slate-950">
+                Smart<span className="text-blue-600">Park</span>
+              </p>
               <p className="text-xs font-medium text-slate-500">Enterprise Console</p>
             </div>
           </div>
@@ -100,11 +101,13 @@ export default function AppLayout({ user, onLogout }) {
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
           <div className="flex min-h-16 flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div className="flex items-center gap-3 lg:hidden">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-700 text-white">
-                <FaCarSide />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-md shadow-blue-900/20">
+                <FaParking />
               </div>
               <div>
-                <p className="font-bold text-slate-950">ParkWise PMS</p>
+                <p className="font-extrabold text-slate-950">
+                  Smart<span className="text-blue-600">Park</span>
+                </p>
                 <p className="text-xs text-slate-500">Enterprise Console</p>
               </div>
             </div>

@@ -12,14 +12,17 @@ const headers = [
   'Allocation',
 ];
 
-export default function ParkingSlotTable({ slots }) {
+export default function ParkingSlotTable({ slots, onEdit }) {
+  const showActions = !!onEdit;
+  const currentHeaders = showActions ? [...headers, 'Actions'] : headers;
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="scrollbar-thin overflow-x-auto">
         <table className="min-w-[980px] w-full border-collapse text-left text-sm">
           <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
             <tr>
-              {headers.map((header) => (
+              {currentHeaders.map((header) => (
                 <th key={header} className="px-4 py-4 font-bold">
                   {header}
                 </th>
@@ -40,6 +43,17 @@ export default function ParkingSlotTable({ slots }) {
                 <td className="px-4 py-4">
                   <StatusBadge value={slot.allocation} />
                 </td>
+                {showActions && (
+                  <td className="px-4 py-4">
+                    <button
+                      type="button"
+                      onClick={() => onEdit?.(slot)}
+                      className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-teal-700 hover:bg-teal-50"
+                    >
+                      Update
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

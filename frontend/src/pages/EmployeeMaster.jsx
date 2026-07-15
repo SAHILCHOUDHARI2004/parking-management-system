@@ -10,8 +10,13 @@ const tableColumns = [
   { label: 'Mobile Number', key: 'mobileNumber' },
   { label: 'Aadhaar Number', key: 'aadhaarNumber' },
   { label: 'Vehicle Number', key: 'vehicleNumber' },
+  { label: 'Vehicle Type', key: 'vehicleType' },
   { label: 'Department', key: 'department' },
 ];
+
+// Vehicle Type must match the parking slot's vehicleSlotType values exactly
+// so slot filtering (Reserved Parking dialog) works reliably.
+const vehicleTypeOptions = ['Sedan', 'CSUV'];
 
 const initialFormState = {
   employeeId: '',
@@ -19,6 +24,7 @@ const initialFormState = {
   mobileNumber: '',
   aadhaarNumber: '',
   vehicleNumber: '',
+  vehicleType: '',
   department: '',
 };
 
@@ -82,6 +88,7 @@ export default function EmployeeMaster() {
         getEmployeeValue(employee, 'employeeName'),
         getEmployeeValue(employee, 'mobileNumber'),
         getEmployeeValue(employee, 'vehicleNumber'),
+        getEmployeeValue(employee, 'vehicleType'),
         getEmployeeValue(employee, 'department'),
       ].join(' ').toLowerCase();
 
@@ -185,7 +192,7 @@ export default function EmployeeMaster() {
           <FaSearch className="shrink-0 text-slate-400" />
           <input
             className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none"
-            placeholder="Search employee ID, name, mobile, vehicle number, department..."
+            placeholder="Search employee ID, name, mobile, vehicle number, vehicle type, department..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -208,7 +215,7 @@ export default function EmployeeMaster() {
         </div>
 
         <div className="scrollbar-thin overflow-x-auto">
-          <table className="min-w-[960px] w-full border-collapse text-left text-sm">
+          <table className="min-w-[1080px] w-full border-collapse text-left text-sm">
             <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
               <tr>
                 {tableColumns.map((column) => (
@@ -231,7 +238,7 @@ export default function EmployeeMaster() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={tableColumns.length} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">
                     No employee records found. Employee data will appear here.
                   </td>
                 </tr>
@@ -265,15 +272,39 @@ export default function EmployeeMaster() {
               <div className="grid gap-4 md:grid-cols-2">
                 {tableColumns.map((column) => (
                   <label key={column.key} className="block">
-                    <span className="text-sm font-semibold text-slate-700">{column.label}</span>
-                    <input
-                      className={`mt-2 w-full rounded-lg border bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:bg-white ${
-                        errors[column.key] ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-teal-600'
-                      }`}
-                      value={formData[column.key]}
-                      onChange={(event) => handleFormChange(column.key, event.target.value)}
-                      placeholder={`Enter ${column.label.toLowerCase()}`}
-                    />
+                    <span className="text-sm font-semibold text-slate-700">
+                      {column.label}
+                      {['employeeName', 'vehicleNumber', 'vehicleType'].includes(column.key) && (
+                        <span className="ml-1 text-rose-500">*</span>
+                      )}
+                    </span>
+
+                    {column.key === 'vehicleType' ? (
+                      <select
+                        className={`mt-2 w-full rounded-lg border bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:bg-white ${
+                          errors[column.key] ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-teal-600'
+                        }`}
+                        value={formData.vehicleType}
+                        onChange={(event) => handleFormChange('vehicleType', event.target.value)}
+                      >
+                        <option value="">Select vehicle type</option>
+                        {vehicleTypeOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className={`mt-2 w-full rounded-lg border bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:bg-white ${
+                          errors[column.key] ? 'border-rose-300 focus:border-rose-500' : 'border-slate-200 focus:border-teal-600'
+                        }`}
+                        value={formData[column.key]}
+                        onChange={(event) => handleFormChange(column.key, event.target.value)}
+                        placeholder={`Enter ${column.label.toLowerCase()}`}
+                      />
+                    )}
+
                     {errors[column.key] ? (
                       <span className="mt-1 block text-xs font-semibold text-rose-600">{errors[column.key]}</span>
                     ) : null}

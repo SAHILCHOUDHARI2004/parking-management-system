@@ -18,7 +18,9 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData)
+      // Merge over emptySlot so older records missing `status` still get a
+      // sane default instead of an undefined/uncontrolled select value.
+      setFormData({ ...emptySlot, ...initialData })
     } else {
       setFormData(emptySlot)
     }
@@ -64,7 +66,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               required
               value={formData.cameraNumber}
               onChange={(e) => handleChange('cameraNumber', e.target.value)}
-              placeholder="CAM-01-01"
+              placeholder="B1-C01"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -74,7 +76,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               disabled={isViewMode}
               value={formData.puzzleNumber}
               onChange={(e) => handleChange('puzzleNumber', e.target.value)}
-              placeholder="PZ-1001 or -"
+              placeholder="B1-P01 or -"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -85,7 +87,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               required
               value={formData.slotNumber}
               onChange={(e) => handleChange('slotNumber', e.target.value)}
-              placeholder="B1-S001"
+              placeholder="B1-P01-S1"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -121,18 +123,14 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
           </Field>
 
           <Field label="Height">
-            <select
+            <input
               disabled={isViewMode}
+              required
               value={formData.height}
               onChange={(e) => handleChange('height', e.target.value)}
+              placeholder="2m"
               className="input-field disabled:bg-navy-50"
-            >
-              {['1.6m', '1.8m', '2.0m', '2.1m'].map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
 
           <Field label="Allocation">

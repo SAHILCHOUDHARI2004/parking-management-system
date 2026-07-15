@@ -1,10 +1,15 @@
 export function getParkingStats(parkingSlots, bookings = []) {
-  const availableSlots = parkingSlots.filter((slot) => slot.allocation === 'Available').length;
+  const availableSlots = parkingSlots.filter(
+    (slot) => slot.allocation === 'Available',
+  ).length;
 
   // Occupied means the vehicle has actually entered (allocation === 'Allocated').
   // A slot that is merely booked but not yet entered is "Reserved", not occupied.
   const occupiedSlots = parkingSlots.filter((slot) => slot.allocation === 'Allocated').length;
   const reservedSlots = parkingSlots.filter((slot) => slot.allocation === 'Reserved').length;
+
+  // Maintenance is driven by the allocation state 'Maintenance'
+  const maintenanceSlots = parkingSlots.filter((slot) => slot.allocation === 'Maintenance').length;
 
   // Employee Slots = total slots currently held by an employee booking that
   // hasn't exited yet (covers both the Reserved and Entered/Occupied stages).
@@ -17,6 +22,7 @@ export function getParkingStats(parkingSlots, bookings = []) {
     availableSlots,
     occupiedSlots,
     reservedSlots,
+    maintenanceSlots,
     employeeSlots,
     sedanSlots: parkingSlots.filter((slot) => slot.vehicleSlotType === 'Sedan').length,
     csuvSlots: parkingSlots.filter((slot) => slot.vehicleSlotType === 'CSUV').length,
