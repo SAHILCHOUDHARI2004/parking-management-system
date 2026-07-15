@@ -263,6 +263,29 @@ export default function Dashboard() {
     };
   });
 
+  // Tower A summary: available/total slot counts per vehicle type (Sedan,
+  // CSUV) broken down by basement (B1, B2, B3). Derived purely from the
+  // existing parkingData - no new business logic, no hardcoded numbers.
+  const towerBasements = ['B1', 'B2', 'B3'];
+  const towerVehicleTypes = ['Sedan', 'CSUV'];
+
+  const towerSummary = towerVehicleTypes.map((vehicleType) => {
+    const basementCounts = towerBasements.map((basement) => {
+      const slots = parkingData.filter(
+        (slot) =>
+          slot.basement === basement &&
+          (slot.vehicleSlotType || slot.vehicleType) === vehicleType,
+      );
+
+      const total = slots.length;
+      const available = slots.filter((slot) => slot.allocation === 'Available').length;
+
+      return { basement, available, total };
+    });
+
+    return { vehicleType, basementCounts };
+  });
+
   // Operations Overview: a live feed built entirely from existing booking
   // data (no dummy rows), most recent activity first.
   const operationsOverview = [...bookings]
@@ -386,7 +409,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <h1 className="text-2xl font-bold text-slate-950">Dashboard</h1>
 
       {/* Live Parking Slots */}
@@ -467,7 +490,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Live Facility Status */}
+      {/* Live Status Bar */}
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 shadow-sm">
         <div className="grid gap-4 p-4 text-white lg:grid-cols-[1fr_320px] lg:p-5">
           <div>
@@ -503,38 +526,48 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* Quick Action Tiles */}
-      <section className="grid grid-cols-3 gap-3">
-        {quickActions.map((action) => (
-          <button
-            key={action.title}
-            className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
-            type="button"
-            onClick={() => {
-              setOperation(action.title);
-              setOperationError('');
-              setSelectedEmployeeId('');
-              setSelectedSlotId('');
-              setEmployeeSearchText('');
-              setIsEmployeeResultsOpen(false);
-              setSlotSearchText('');
-              setIsSlotResultsOpen(false);
-            }}
-          >
-            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
-              <action.icon className="text-sm" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-sm font-bold text-slate-950">{action.title}</h2>
-              <p className="hidden truncate text-xs text-slate-500 sm:block">{action.description}</p>
-            </div>
-            <FaArrowRight className="hidden shrink-0 text-xs text-slate-300 transition group-hover:translate-x-1 group-hover:text-teal-700 sm:block" />
-          </button>
-        ))}
-      </section>
-
-      {/* Vehicle Type Occupancy + Operations Overview */}
+      {/* Tower A Parking Summary & Vehicle Type Occupancy */}
       <section className="grid gap-4 lg:grid-cols-2">
+        {/* Tower A Summary Table */}
+        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Tower A</h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Available / total slot counts per vehicle type across each basement.
+            </p>
+          </div>
+
+          <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Vehicle Type</th>
+                  {towerBasements.map((basement) => (
+                    <th key={basement} className="px-4 py-3 text-center font-bold">
+                      {basement}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {towerSummary.map((row) => (
+                  <tr key={row.vehicleType} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{row.vehicleType}</td>
+                    {row.basementCounts.map(({ basement, available, total }) => (
+                      <td key={basement} className="px-4 py-3 text-center">
+                        <span className="font-bold text-emerald-600">{available}</span>
+                        <span className="text-slate-400"> / </span>
+                        <span className="font-bold text-slate-950">{total}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Vehicle Type Occupancy */}
         <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div>
             <h2 className="text-base font-bold text-slate-950">Vehicle Type Occupancy</h2>
@@ -571,54 +604,36 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
         </div>
+      </section>
 
-        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">Operations Overview</h2>
-            <p className="mt-0.5 text-sm text-slate-500">Live vehicle activity from current bookings.</p>
-          </div>
-
-          <div className="mt-3 max-h-44 flex-1 overflow-hidden rounded-lg border border-slate-200">
-            <div className="scrollbar-thin max-h-44 overflow-auto">
-              <table className="min-w-[560px] w-full border-collapse text-left text-xs">
-                <thead className="sticky top-0 bg-slate-100 uppercase tracking-[0.1em] text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2 font-bold">Vehicle No.</th>
-                    <th className="px-3 py-2 font-bold">Employee</th>
-                    <th className="px-3 py-2 font-bold">Slot</th>
-                    <th className="px-3 py-2 font-bold">Type</th>
-                    <th className="px-3 py-2 font-bold">Status</th>
-                    <th className="px-3 py-2 font-bold">Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {operationsOverview.length > 0 ? (
-                    operationsOverview.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 font-semibold text-slate-900">{row.vehicleNumber}</td>
-                        <td className="px-3 py-2 text-slate-700">{row.employeeName}</td>
-                        <td className="px-3 py-2 text-slate-700">{row.slotNumber}</td>
-                        <td className="px-3 py-2 text-slate-700">{row.vehicleType}</td>
-                        <td className="px-3 py-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${getBookingStatusTone(row.status)}`}>
-                            {row.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-slate-500">{row.time}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-xs font-semibold text-slate-500">
-                        No booking activity yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+      {/* Quick Action Tiles: Reserved Parking / Vehicle Entry / Vehicle Exit */}
+      <section className="grid grid-cols-3 gap-3">
+        {quickActions.map((action) => (
+          <button
+            key={action.title}
+            className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
+            type="button"
+            onClick={() => {
+              setOperation(action.title);
+              setOperationError('');
+              setSelectedEmployeeId('');
+              setSelectedSlotId('');
+              setEmployeeSearchText('');
+              setIsEmployeeResultsOpen(false);
+              setSlotSearchText('');
+              setIsSlotResultsOpen(false);
+            }}
+          >
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
+              <action.icon className="text-sm" />
             </div>
-          </div>
-        </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-sm font-bold text-slate-950">{action.title}</h2>
+              <p className="hidden truncate text-xs text-slate-500 sm:block">{action.description}</p>
+            </div>
+            <FaArrowRight className="hidden shrink-0 text-xs text-slate-300 transition group-hover:translate-x-1 group-hover:text-teal-700 sm:block" />
+          </button>
+        ))}
       </section>
 
       {/* Statistics Cards */}
@@ -633,6 +648,55 @@ export default function Dashboard() {
           {metrics.map((metric) => (
             <MetricCard key={metric.title} {...metric} />
           ))}
+        </div>
+      </section>
+
+      {/* Operations Overview */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-base font-bold text-slate-950">Operations Overview</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Live vehicle activity from current bookings.</p>
+        </div>
+
+        <div className="mt-3 max-h-64 overflow-hidden rounded-lg border border-slate-200">
+          <div className="scrollbar-thin max-h-64 overflow-auto">
+            <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+              <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Vehicle No.</th>
+                  <th className="px-4 py-3 font-bold">Employee</th>
+                  <th className="px-4 py-3 font-bold">Slot</th>
+                  <th className="px-4 py-3 font-bold">Type</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
+                  <th className="px-4 py-3 font-bold">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {operationsOverview.length > 0 ? (
+                  operationsOverview.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{row.vehicleNumber}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.employeeName}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.slotNumber}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.vehicleType}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${getBookingStatusTone(row.status)}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{row.time}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                      No booking activity yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -687,10 +751,34 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* Recent Vehicle Activity */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-bold text-slate-950">Recent Vehicle Activity</h2>
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+          {recentActivity.map((activity) => (
+            <div key={`${activity.time}-${activity.vehicle}`} className="flex gap-2.5 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-teal-700 shadow-sm">
+                <activity.icon className="text-sm" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="truncate text-xs font-bold text-slate-950">{activity.vehicle}</p>
+                  <p className="shrink-0 text-[11px] font-semibold text-slate-400">{activity.time}</p>
+                </div>
+                <p className="mt-0.5 text-xs text-slate-600">{activity.action} &middot; {activity.zone}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Traffic Heatmap */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-base font-bold text-slate-950">Traffic Heatmap</h2>
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Traffic Heatmap</h2>
+            <p className="text-sm text-slate-500">Demo occupancy intensity by day and time.</p>
+          </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" />
             Low
@@ -728,27 +816,6 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Recent Vehicle Activity */}
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-base font-bold text-slate-950">Recent Vehicle Activity</h2>
-        <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-          {recentActivity.map((activity) => (
-            <div key={`${activity.time}-${activity.vehicle}`} className="flex gap-2.5 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-teal-700 shadow-sm">
-                <activity.icon className="text-sm" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="truncate text-xs font-bold text-slate-950">{activity.vehicle}</p>
-                  <p className="shrink-0 text-[11px] font-semibold text-slate-400">{activity.time}</p>
-                </div>
-                <p className="mt-0.5 text-xs text-slate-600">{activity.action} &middot; {activity.zone}</p>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
 
