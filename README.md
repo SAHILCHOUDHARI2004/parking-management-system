@@ -1,53 +1,50 @@
 # Parking Management System
 
-A multi-component repository for the enterprise Parking Management System, split into distinct Frontend and Backend folders.
+React/Vite frontend with a FastAPI and PostgreSQL backend for booking, entry, and exit of employee vehicles.
 
-## Repository Structure
+## Vehicle gate API
 
-- [frontend/](file:///c:/Users/Raj/Desktop/parking-management-system/frontend) - React 19 + Vite + Tailwind CSS application.
-- [backend/](file:///c:/Users/Raj/Desktop/parking-management-system/backend) - Node.js + Express REST API server.
+The booking is the source of truth for vehicle number, employee, and parking slot. Therefore, an entry or exit request only needs the `bookingId` in its URL. Do not send a vehicle number, slot, or timestamp from the browser: the API gets those from the booking and records the server time, which avoids incorrect or tampered gate records.
 
----
+Both endpoints require an authenticated user with the `Admin` or `Security` role.
 
-## Workspace Quick Start
+| Gate event | HTTP request | Request body | Successful result |
+| --- | --- | --- | --- |
+| Vehicle entered | `PATCH /api/bookings/{bookingId}/enter` | None | Changes booking from `Booked` to `Entered`, saves `check_in_time`, and marks its slot `Allocated`. |
+| Vehicle exited | `PATCH /api/bookings/{bookingId}/exit` | None | Changes booking from `Entered` to `Exited`, saves `check_out_time`, and makes its slot `Available`. |
 
-You can manage both frontend and backend directly from the workspace root directory using the root-level scripts.
+Send the access token in the `Authorization` header:
 
-### 1. Install Dependencies
-To install dependencies for both the frontend and backend in one command:
-```bash
-npm run install:all
+```http
+Authorization: Bearer <access-token>
 ```
 
-### 2. Run in Development Mode
-To start both the backend API server and the Vite dev server concurrently:
-```bash
-npm run dev
+Example calls:
+
+```js
+await api(`/api/bookings/${bookingId}/enter`, { method: 'PATCH' });
+await api(`/api/bookings/${bookingId}/exit`, { method: 'PATCH' });
 ```
 
----
+The API response contains the updated booking record:
 
-## Frontend Component
-
-- **Stack**: React 19, Vite, Tailwind CSS, React Router DOM, React Icons.
-- **Root File**: [frontend/index.html](file:///c:/Users/Raj/Desktop/parking-management-system/frontend/index.html)
-- **Source Code**: [frontend/src/](file:///c:/Users/Raj/Desktop/parking-management-system/frontend/src)
-- **Mock Data**: [frontend/src/data/parkingData.json](file:///c:/Users/Raj/Desktop/parking-management-system/frontend/src/data/parkingData.json) (Parking records, dashboard metrics, and parking slot details are generated from here).
-
-To run the frontend alone:
-```bash
-npm run dev:frontend
+```json
+{
+  "id": 42,
+  "employee_id": 7,
+  "parking_slot_id": 18,
+  "status": "Entered",
+  "check_in_time": "2026-07-15T10:25:31.123Z",
+  "check_out_time": null,
+  "created_at": "2026-07-15T08:00:00Z"
+}
 ```
 
----
+For a number-plate reader or gate device, first locate the active booking through `GET /api/bookings?search=<vehicle-number>`, then use its `id` for the entry/exit call. The system also stores an audit record with employee ID, employee name, vehicle number, slot number, and basement for every entry and exit.
 
-## Backend Component
+## Project layout
 
-- **Stack**: Node.js, Express, CORS, Dotenv, Nodemon.
-- **Entrypoint**: [backend/server.js](file:///c:/Users/Raj/Desktop/parking-management-system/backend/server.js)
-- **Port**: `5000` (Health Check: `http://localhost:5000/api/health`)
+- `frontend/` — React 19, Vite, Tailwind CSS
+- `backend/` — Python FastAPI, SQLAlchemy, PostgreSQL
 
-To run the backend alone:
-```bash
-npm run dev:backend
-```
+The FastAPI interactive API documentation is available at `/docs` while the backend is running.

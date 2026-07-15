@@ -37,7 +37,7 @@ app.include_router(employees.router)
 app.include_router(parking_slots.router)
 app.include_router(bookings.router)
 app.include_router(dashboard.router)
-# app.include_router(audit_logs.router)
+app.include_router(audit_logs.router)
 
 
 @app.get("/api/health", tags=["Health"])
