@@ -1,26 +1,17 @@
 {
-  "name": "parking-management-system",
+  "name": "parking-management-system-workspace",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "description": "Root workspace of the Parking Management System containing frontend and backend components",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
-  },
-  "dependencies": {
-    "@tailwindcss/vite": "latest",
-    "@vitejs/plugin-react": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-icons": "latest",
-    "react-router-dom": "latest",
-    "recharts": "^3.9.2",
-    "tailwindcss": "latest",
-    "vite": "latest"
+    "install:frontend": "npm install --prefix frontend",
+    "install:backend": "cd backend && uv venv --clear && uv pip install -r requirements.txt",
+    "install:all": "npm install && npm run install:frontend && npm run install:backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "cd backend && uv run uvicorn app.main:app --reload --port 5000",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\""
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.2",
-    "autoprefixer": "^10.5.2"
+    "concurrently": "^8.2.2"
   }
 }
