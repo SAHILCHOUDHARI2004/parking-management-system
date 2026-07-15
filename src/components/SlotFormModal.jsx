@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react'
 import Modal from './Modal'
 
 const emptySlot = {
-  basement: 'Basement 1',
+  basement: 'B1',
   cameraNumber: '',
   puzzleNumber: '',
   slotNumber: '',
   vehicleSlotType: 'Sedan',
   parkingType: 'Open',
-  height: '1.8m',
-  allocation: 'Vacant',
+  height: '2m',
+  allocation: 'Available',
+  status: 'Working',
 }
 
 export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, mode = 'add' }) {
@@ -18,7 +19,9 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData)
+      // Merge over emptySlot so older records missing `status` still get a
+      // sane default instead of an undefined/uncontrolled select value.
+      setFormData({ ...emptySlot, ...initialData })
     } else {
       setFormData(emptySlot)
     }
@@ -50,7 +53,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               onChange={(e) => handleChange('basement', e.target.value)}
               className="input-field disabled:bg-navy-50"
             >
-              {['Basement 1', 'Basement 2', 'Basement 3'].map((b) => (
+              {['B1', 'B2', 'B3'].map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -64,7 +67,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               required
               value={formData.cameraNumber}
               onChange={(e) => handleChange('cameraNumber', e.target.value)}
-              placeholder="CAM-01-01"
+              placeholder="B1-C01"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -74,7 +77,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               disabled={isViewMode}
               value={formData.puzzleNumber}
               onChange={(e) => handleChange('puzzleNumber', e.target.value)}
-              placeholder="PZ-1001 or -"
+              placeholder="B1-P01 or -"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -85,7 +88,7 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               required
               value={formData.slotNumber}
               onChange={(e) => handleChange('slotNumber', e.target.value)}
-              placeholder="B1-S001"
+              placeholder="B1-P01-S1"
               className="input-field disabled:bg-navy-50"
             />
           </Field>
@@ -121,18 +124,14 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
           </Field>
 
           <Field label="Height">
-            <select
+            <input
               disabled={isViewMode}
+              required
               value={formData.height}
               onChange={(e) => handleChange('height', e.target.value)}
+              placeholder="2m"
               className="input-field disabled:bg-navy-50"
-            >
-              {['1.6m', '1.8m', '2.0m', '2.1m'].map((h) => (
-                <option key={h} value={h}>
-                  {h}
-                </option>
-              ))}
-            </select>
+            />
           </Field>
 
           <Field label="Allocation">
@@ -142,9 +141,24 @@ export default function SlotFormModal({ isOpen, onClose, onSubmit, initialData, 
               onChange={(e) => handleChange('allocation', e.target.value)}
               className="input-field disabled:bg-navy-50"
             >
-              {['Employee', 'Visitor', 'Reserved', 'Vacant'].map((a) => (
+              {['Available', 'Reserved', 'Allocated'].map((a) => (
                 <option key={a} value={a}>
                   {a}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Status">
+            <select
+              disabled={isViewMode}
+              value={formData.status}
+              onChange={(e) => handleChange('status', e.target.value)}
+              className="input-field disabled:bg-navy-50"
+            >
+              {['Working', 'Not Working'].map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
               ))}
             </select>

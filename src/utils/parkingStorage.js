@@ -19,11 +19,16 @@ export function readParkingSlots() {
   const source = Array.isArray(slots) ? slots : parkingDataSeed;
   // The supplied master data uses Employee/Transport as allocation categories.
   // Treat those unoccupied seed records as available until an operational action reserves them.
-  return source.map((slot) => (
-    ['Available', 'Reserved', 'Allocated', 'Maintenance'].includes(slot.allocation)
+  return source.map((slot) => {
+    const withAllocation = ['Available', 'Reserved', 'Allocated', 'Maintenance'].includes(slot.allocation)
       ? slot
-      : { ...slot, allocation: 'Available' }
-  ));
+      : { ...slot, allocation: 'Available' };
+
+    // Working / Not Working is a separate maintenance flag from allocation.
+    // Older seed records don't have it - default them to 'Working' so nothing
+    // is unexpectedly hidden from booking once this field is introduced.
+    return withAllocation.status ? withAllocation : { ...withAllocation, status: 'Working' };
+  });
 }
 
 export function readParkingBookings() {
@@ -46,7 +51,7 @@ export function createBooking({ employee, slotId }) {
   const bookings = readParkingBookings();
   const slot = slots.find((item) => String(item.id) === String(slotId));
 
-  if (!slot || slot.allocation !== 'Available') {
+  if (!slot || slot.allocation !== 'Available' || slot.status === 'Not Working') {
     throw new Error('This parking slot is no longer available.');
   }
 
@@ -55,6 +60,7 @@ export function createBooking({ employee, slotId }) {
     employeeId: employee.employeeId,
     employeeName: employee.employeeName,
     vehicleNumber: employee.vehicleNumber,
+    vehicleType: employee.vehicleType || '',
     department: employee.department,
     slotId: slot.id,
     slotNumber: slot.slotNumber,
@@ -87,6 +93,39 @@ export function markVehicleExited(bookingId) {
   const updated = { ...booking, status: 'Exited', exitTime: new Date().toISOString() };
   save(readParkingSlots().map((slot) => (slot.id === booking.slotId ? { ...slot, allocation: 'Available' } : slot)), bookings.map((item) => (item.id === bookingId ? updated : item)));
   return updated;
+}
+
+// Adds a brand-new slot record to the master data. Generates the next
+// sequential numeric id and defaults allocation/status so partially-filled
+// forms still produce a usable record.
+export function addParkingSlot(slotData) {
+  const slots = readParkingSlots();
+  const bookings = readParkingBookings();
+  const nextId = slots.reduce((max, slot) => Math.max(max, Number(slot.id) || 0), 0) + 1;
+
+  const newSlot = {
+    allocation: 'Available',
+    status: 'Working',
+    ...slotData,
+    id: nextId,
+  };
+
+  save([...slots, newSlot], bookings);
+  return newSlot;
+}
+
+// Updates an existing slot record in place (used by Parking Slot Master's
+// Update action, including flipping Working / Not Working status).
+export function updateParkingSlot(slotId, updates) {
+  const slots = readParkingSlots();
+  const bookings = readParkingBookings();
+
+  const updatedSlots = slots.map((slot) =>
+    String(slot.id) === String(slotId) ? { ...slot, ...updates, id: slot.id } : slot,
+  );
+
+  save(updatedSlots, bookings);
+  return updatedSlots.find((slot) => String(slot.id) === String(slotId));
 }
 
 export function useParkingStore() {

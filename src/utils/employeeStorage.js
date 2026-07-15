@@ -9,6 +9,7 @@ const fallbackKeys = {
   mobileNumber: ['mobileNumber', 'mobile', 'Mobile Number', 'MobileNumber'],
   aadhaarNumber: ['aadhaarNumber', 'aadhaar', 'Aadhaar Number', 'AadhaarNumber'],
   vehicleNumber: ['vehicleNumber', 'vehicleNo', 'Vehicle Number', 'VehicleNumber'],
+  vehicleType: ['vehicleType', 'vehicleSlotType', 'Vehicle Type', 'VehicleType'],
   department: ['department', 'Department'],
 };
 
@@ -24,6 +25,7 @@ export function normalizeEmployee(employee) {
     mobileNumber: String(getEmployeeValue(employee, 'mobileNumber') ?? '').trim(),
     aadhaarNumber: String(getEmployeeValue(employee, 'aadhaarNumber') ?? '').trim(),
     vehicleNumber: String(getEmployeeValue(employee, 'vehicleNumber') ?? '').trim(),
+    vehicleType: String(getEmployeeValue(employee, 'vehicleType') ?? '').trim(),
     department: String(getEmployeeValue(employee, 'department') ?? '').trim(),
   };
 }

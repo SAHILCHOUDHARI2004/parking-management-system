@@ -39,9 +39,14 @@ function resolveSlotBookingInfo(slot, bookings) {
   }
 }
 
-// green = available, orange = booked/occupied (anything not "Available")
-function getSlotColors(allocation) {
-  if (allocation === 'Available') {
+// green = available, orange = booked/occupied, red = not working (takes
+// priority over allocation - a slot flagged Not Working should never read
+// as bookable, regardless of its allocation state).
+function getSlotColors(slot) {
+  if (slot.status === 'Not Working') {
+    return { background: '#fee2e2', color: '#b91c1c', border: '#fca5a5' }
+  }
+  if (slot.allocation === 'Available') {
     return { background: '#d1fae5', color: '#047857', border: '#34d399' }
   }
   return { background: '#fef3c7', color: '#b45309', border: '#fbbf24' }
@@ -74,9 +79,10 @@ const squareStyle = {
 
 export default function ParkingSlotCard({ slot, bookings }) {
   const [showTooltip, setShowTooltip] = useState(false)
-  const colors = getSlotColors(slot.allocation)
+  const colors = getSlotColors(slot)
   const parkingTypeStyle = getParkingTypeColor(slot.parkingType)
   const bookingInfo = resolveSlotBookingInfo(slot, bookings)
+  const slotStatus = slot.status || 'Working'
 
   const fullLabel = [slot.basement, slot.slotNumber].filter(Boolean).join('-')
   const shortLabel = slot.slotNumber?.startsWith?.(`${slot.basement}-`)
@@ -84,13 +90,14 @@ export default function ParkingSlotCard({ slot, bookings }) {
     : slot.slotNumber || fullLabel
 
   const tooltipRows = [
+    { label: 'Vehicle Type', value: bookingInfo.vehicleType },
+    { label: 'Slot Number', value: slot.slotNumber },
+    { label: 'Basement', value: slot.basement },
+    { label: 'Slot Condition', value: slotStatus },
     { label: 'Employee Name', value: bookingInfo.employeeName },
     { label: 'Employee ID', value: bookingInfo.employeeId },
     { label: 'Department', value: bookingInfo.department },
     { label: 'Vehicle Number', value: bookingInfo.vehicleNumber },
-    { label: 'Vehicle Type', value: bookingInfo.vehicleType },
-    { label: 'Slot Number', value: slot.slotNumber },
-    { label: 'Basement', value: slot.basement },
     { label: 'Booking Status', value: bookingInfo.status || slot.allocation },
     { label: 'Camera', value: slot.cameraNumber },
   ].filter((row) => row.value !== undefined && row.value !== null && row.value !== '')
@@ -137,7 +144,7 @@ export default function ParkingSlotCard({ slot, bookings }) {
               className="badge"
               style={{ backgroundColor: colors.background, color: colors.color }}
             >
-              {slot.allocation}
+              {slotStatus === 'Not Working' ? 'Not Working' : slot.allocation}
             </span>
           </div>
 
