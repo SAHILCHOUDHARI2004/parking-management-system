@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FaArrowRight,
   FaCarAlt,
@@ -28,6 +28,7 @@ import MetricCard from '../components/ui/MetricCard.jsx';
 import Modal from '../components/Modal.jsx';
 import { getEmployeeValue, useEmployees } from '../utils/employeeStorage.js';
 import { getParkingStats } from '../utils/parkingStats.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 import {
   Bar,
@@ -112,9 +113,10 @@ function getBookingStatusTone(status) {
 }
 
 export default function Dashboard() {
-  const { slots: parkingData, bookings } = useParkingStore();
-  const stats = getParkingStats(parkingData, bookings);
-  const employees = useEmployees();
+  const { user } = useAuth();
+  const { slots: parkingData, bookings, refresh: refreshParking, error: parkingError, isLoading: parkingLoading } = useParkingStore();
+  const { employees: fetchedEmployees, error: employeesError, isLoading: employeesLoading } = useEmployees(user?.role !== 'Employee');
+
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [operation, setOperation] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -132,8 +134,33 @@ export default function Dashboard() {
   // employee search - type to filter, click a result to select immediately.
   const [slotSearchText, setSlotSearchText] = useState('');
   const [isSlotResultsOpen, setIsSlotResultsOpen] = useState(false);
-  const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100);
-  const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100);
+
+  // Determine active loading & error states
+  const pageLoading = parkingLoading || (user?.role !== 'Employee' && employeesLoading);
+  const pageError = parkingError || (user?.role !== 'Employee' ? employeesError : '');
+
+  // Pre-load and map employee details for non-admin users
+  const employees = useMemo(() => {
+    if (user?.role === 'Employee') {
+      return user.employee ? [user.employee] : [];
+    }
+    return fetchedEmployees;
+  }, [user, fetchedEmployees]);
+
+  // Set default employee ID if user is Employee role
+  useEffect(() => {
+    if (user?.role === 'Employee' && user.employee) {
+      const empId = getEmployeeValue(user.employee, 'employeeId');
+      setSelectedEmployeeId(empId);
+      const empName = getEmployeeValue(user.employee, 'employeeName');
+      const vehicleNumber = getEmployeeValue(user.employee, 'vehicleNumber');
+      setEmployeeSearchText(`${empName} - ${empId} (${vehicleNumber || 'No vehicle'})`);
+    }
+  }, [user, operation]);
+
+  const stats = getParkingStats(parkingData, bookings);
+  const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100) || 0;
+  const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100) || 0;
 
   const metrics = [
     { title: 'Total Slots', value: stats.totalSlots, icon: FaParking, accent: 'bg-teal-50 text-teal-700', note: 'Complete parking inventory' },
@@ -145,8 +172,39 @@ export default function Dashboard() {
     { title: 'Puzzle Slots', value: stats.puzzleSlots, icon: FaLayerGroup, accent: 'bg-violet-50 text-violet-700', note: 'Mapped to B2 zone' },
     { title: 'Stack Slots', value: stats.stackSlots, icon: FaWarehouse, accent: 'bg-amber-50 text-amber-700', note: 'Mapped to B3 zone' },
     { title: 'Ground Slots', value: stats.groundSlots, icon: FaRoute, accent: 'bg-slate-100 text-slate-700', note: 'Mapped to B1 zone' },
-    { title: 'Registered Employees', value: employees.length, icon: FaUserTie, accent: 'bg-teal-50 text-teal-700', note: 'Stored in browser localStorage' },
+    { title: 'Registered Employees', value: employees.length, icon: FaUserTie, accent: 'bg-teal-50 text-teal-700', note: 'Synced with database' },
   ];
+
+  const filteredMetrics = useMemo(() => {
+    if (user?.role === 'Employee') {
+      return metrics.filter(m => m.title !== 'Registered Employees');
+    }
+    return metrics;
+  }, [user, metrics]);
+
+  const filteredQuickActions = useMemo(() => {
+    if (user?.role === 'Employee') {
+      return quickActions.filter((a) => a.title === 'Reserved Parking');
+    }
+    return quickActions;
+  }, [user]);
+
+  if (pageLoading) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center bg-slate-50 rounded-lg">
+        <p className="text-sm font-semibold text-slate-500">Loading parking inventory...</p>
+      </div>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <div className="rounded-lg bg-rose-50 p-4 border border-rose-100">
+        <p className="text-sm font-bold text-rose-800">Error loading dashboard</p>
+        <p className="mt-1 text-sm text-rose-700">{pageError}</p>
+      </div>
+    );
+  }
 
   const filteredEmployees = useMemo(() => {
     const normalizedQuery = employeeQuery.trim().toLowerCase();
@@ -656,8 +714,8 @@ export default function Dashboard() {
       </section>
 
       {/* Quick Action Tiles: Reserved Parking / Vehicle Entry / Vehicle Exit */}
-      <section className="grid grid-cols-3 gap-3">
-        {quickActions.map((action) => (
+      <section className={`grid gap-3 ${user?.role === 'Employee' ? 'grid-cols-1 max-w-sm' : 'grid-cols-3'}`}>
+        {filteredQuickActions.map((action) => (
           <button
             key={action.title}
             className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
@@ -694,7 +752,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {metrics.map((metric) => (
+          {filteredMetrics.map((metric) => (
             <MetricCard key={metric.title} {...metric} />
           ))}
         </div>
@@ -946,7 +1004,7 @@ export default function Dashboard() {
         {operation === 'Reserved Parking' && (
           <form
             className="space-y-4"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
 
               if (!selectedEmployee || !selectedSlotId) {
@@ -955,7 +1013,8 @@ export default function Dashboard() {
               }
 
               try {
-                createBooking({ employee: selectedEmployee, slotId: selectedSlotId });
+                await createBooking({ employee: selectedEmployee, slotId: selectedSlotId });
+                await refreshParking();
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);
@@ -1121,9 +1180,10 @@ export default function Dashboard() {
             emptyMessage="No booked vehicles are waiting for entry."
             actionLabel="Mark Entered"
             error={operationError}
-            onAction={(booking) => {
+            onAction={async (booking) => {
               try {
-                markVehicleEntered(booking.id);
+                await markVehicleEntered(booking.id);
+                await refreshParking();
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);
@@ -1138,9 +1198,10 @@ export default function Dashboard() {
             emptyMessage="No entered vehicles are ready for exit."
             actionLabel="Mark Exited"
             error={operationError}
-            onAction={(booking) => {
+            onAction={async (booking) => {
               try {
-                markVehicleExited(booking.id);
+                await markVehicleExited(booking.id);
+                await refreshParking();
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);

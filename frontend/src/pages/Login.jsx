@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import {
   FaArrowRight,
   FaEye,
@@ -10,10 +10,35 @@ import {
   FaUser,
 } from 'react-icons/fa';
 import loginHeroImage from '../assets/login-hero.jpg';
-/api/auth/login
-export default function Login() {
+
+export default function Login({ onLogin, isAuthenticated }) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError('');
+    
+    if (!username.trim() || !password.trim()) {
+      setError('Please enter both username/email and password.');
+      return;
+    }
+
+    const result = await onLogin(username, password);
+    if (result.success) {
+      navigate('/dashboard');
+    } else {
+      setError(result.message || 'Incorrect username or password');
+    }
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-slate-950">
@@ -54,14 +79,15 @@ export default function Login() {
           <h1 className="mt-7 text-2xl font-bold text-slate-900">Administrator Login</h1>
           <p className="mt-1.5 text-sm text-slate-500">Access and manage your parking system.</p>
 
-          <form className="mt-6 space-y-4">
+          <form className="mt-6 space-y-4" onSubmit={submit}>
             <label className="block">
               <div className="flex items-center gap-3 rounded-xl border border-slate-200/80 bg-white/70 px-4 py-3.5 transition duration-200 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-4 focus-within:ring-blue-100">
                 <FaUser className="text-slate-400" />
                 <input
                   className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                  placeholder="Username"
-                  defaultValue="admin@parkwise.com"
+                  placeholder="Username or Email"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
                 />
               </div>
             </label>
@@ -73,7 +99,8 @@ export default function Login() {
                   className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Password"
-                  defaultValue="parking123"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                 />
                 <button
                   type="button"
@@ -101,13 +128,19 @@ export default function Login() {
               </button>
             </div>
 
-            <Link
-              to="/dashboard"
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-900/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-900/30"
+            {error && (
+              <p className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 border border-rose-100">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-900/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-900/30 cursor-pointer"
             >
               Login
               <FaArrowRight />
-            </Link>
+            </button>
           </form>
 
           <p className="mt-6 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500">
