@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import {
   FaArrowRight,
   FaCarAlt,
@@ -8,8 +8,10 @@ import {
   FaParking,
   FaRegCalendarCheck,
   FaRoute,
+  FaSearch,
   FaSignInAlt,
   FaSignOutAlt,
+  FaTools,
   FaUserTie,
   FaUsers,
   FaWarehouse,
@@ -26,7 +28,6 @@ import MetricCard from '../components/ui/MetricCard.jsx';
 import Modal from '../components/Modal.jsx';
 import { getEmployeeValue, useEmployees } from '../utils/employeeStorage.js';
 import { getParkingStats } from '../utils/parkingStats.js';
-import { useAuth } from '../hooks/useAuth.js';
 
 import {
   Bar,
@@ -34,14 +35,14 @@ import {
   CartesianGrid,
   Legend,
   ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
 } from 'recharts';
 
 const quickActions = [
   {
-    title: 'Book Parking',
+    title: 'Reserved Parking',
     description: 'Reserve a slot for employee or visitor parking.',
     icon: FaRegCalendarCheck,
     accent: 'bg-teal-700 text-white',
@@ -111,12 +112,9 @@ function getBookingStatusTone(status) {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const { slots: parkingData, bookings, refresh: refreshParking, error: parkingError, isLoading: parkingLoading } = useParkingStore();
-  const { employees: fetchedEmployees, error: employeesError, isLoading: employeesLoading } = useEmployees(user?.role !== 'Employee');
-
+  const { slots: parkingData, bookings } = useParkingStore();
   const stats = getParkingStats(parkingData, bookings);
-
+  const employees = useEmployees();
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [operation, setOperation] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -124,54 +122,31 @@ export default function Dashboard() {
   const [operationError, setOperationError] = useState('');
   const [basementFilter, setBasementFilter] = useState('All');
   const [slotPage, setSlotPage] = useState(1);
+  // Employee autocomplete (Reserved Parking dialog only). `employeeSearchText`
+  // is the single input's text - while typing it's the search query, and
+  // once an employee is picked it displays that employee's label. Kept
+  // fully separate from `employeeQuery` (Employee Summary table search).
+  const [employeeSearchText, setEmployeeSearchText] = useState('');
+  const [isEmployeeResultsOpen, setIsEmployeeResultsOpen] = useState(false);
+  // Slot autocomplete (Reserved Parking dialog). Same pattern as the
+  // employee search - type to filter, click a result to select immediately.
+  const [slotSearchText, setSlotSearchText] = useState('');
+  const [isSlotResultsOpen, setIsSlotResultsOpen] = useState(false);
+  const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100);
+  const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100);
 
-  // Determine active loading & error states
-  const pageLoading = parkingLoading || (user?.role !== 'Employee' && employeesLoading);
-  const pageError = parkingError || (user?.role !== 'Employee' ? employeesError : '');
-
-  // Pre-load and map employee details for non-admin users
-  const employees = useMemo(() => {
-    if (user?.role === 'Employee') {
-      return user.employee ? [user.employee] : [];
-    }
-    return fetchedEmployees;
-  }, [user, fetchedEmployees]);
-
-  // Set default employee ID if user is Employee role
-  useEffect(() => {
-    if (user?.role === 'Employee' && user.employee) {
-      setSelectedEmployeeId(user.employee.employeeId);
-    }
-  }, [user, operation]);
-
-  const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100) || 0;
-  const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100) || 0;
-
-  const metrics = useMemo(() => [
+  const metrics = [
     { title: 'Total Slots', value: stats.totalSlots, icon: FaParking, accent: 'bg-teal-50 text-teal-700', note: 'Complete parking inventory' },
     { title: 'Available Slots', value: stats.availableSlots, icon: FaDoorOpen, accent: 'bg-emerald-50 text-emerald-700', note: `${availablePercentage}% currently open` },
     { title: 'Occupied Slots', value: stats.occupiedSlots, icon: FaCarAlt, accent: 'bg-rose-50 text-rose-700', note: `${occupiedPercentage}% in use (vehicle entered)` },
     { title: 'Employee Slots', value: stats.employeeSlots, icon: FaUserTie, accent: 'bg-indigo-50 text-indigo-700', note: 'Currently booked or entered' },
     { title: 'Reserved Slots', value: stats.reservedSlots, icon: FaUsers, accent: 'bg-sky-50 text-sky-700', note: 'Booked, awaiting vehicle entry' },
+    { title: 'Maintenance Slots', value: stats.maintenanceSlots, icon: FaTools, accent: 'bg-orange-50 text-orange-700', note: 'Marked Not Working' },
     { title: 'Puzzle Slots', value: stats.puzzleSlots, icon: FaLayerGroup, accent: 'bg-violet-50 text-violet-700', note: 'Mapped to B2 zone' },
     { title: 'Stack Slots', value: stats.stackSlots, icon: FaWarehouse, accent: 'bg-amber-50 text-amber-700', note: 'Mapped to B3 zone' },
     { title: 'Ground Slots', value: stats.groundSlots, icon: FaRoute, accent: 'bg-slate-100 text-slate-700', note: 'Mapped to B1 zone' },
-    { title: 'Registered Employees', value: employees.length, icon: FaUserTie, accent: 'bg-teal-50 text-teal-700', note: 'Synced with database' },
-  ], [stats, availablePercentage, occupiedPercentage, employees]);
-
-  const filteredMetrics = useMemo(() => {
-    if (user?.role === 'Employee') {
-      return metrics.filter(m => m.title !== 'Registered Employees');
-    }
-    return metrics;
-  }, [user, metrics]);
-
-  const filteredQuickActions = useMemo(() => {
-    if (user?.role === 'Employee') {
-      return quickActions.filter((a) => a.title === 'Book Parking');
-    }
-    return quickActions;
-  }, [user]);
+    { title: 'Registered Employees', value: employees.length, icon: FaUserTie, accent: 'bg-teal-50 text-teal-700', note: 'Stored in browser localStorage' },
+  ];
 
   const filteredEmployees = useMemo(() => {
     const normalizedQuery = employeeQuery.trim().toLowerCase();
@@ -191,6 +166,8 @@ export default function Dashboard() {
     });
   }, [employeeQuery, employees]);
 
+  // Employees with an active booking (Booked or Entered) should not be
+  // offered again in the Reserved Parking form until their vehicle has exited.
   const activeBookingEmployeeIds = useMemo(
     () =>
       new Set(
@@ -206,6 +183,26 @@ export default function Dashboard() {
     [employees, activeBookingEmployeeIds],
   );
 
+  // Autocomplete results for the Reserved Parking dialog, filtered from the
+  // existing `bookableEmployees` list (which already hides Booked/Entered
+  // employees) by Employee Name or Vehicle Number, case-insensitive. This
+  // does not change who is eligible to be booked - only what's shown
+  // while typing.
+  const employeeAutocompleteResults = useMemo(() => {
+    const normalizedSearch = employeeSearchText.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return bookableEmployees;
+    }
+
+    return bookableEmployees.filter((employee) => {
+      const name = String(getEmployeeValue(employee, 'employeeName') || '').toLowerCase();
+      const vehicleNumber = String(getEmployeeValue(employee, 'vehicleNumber') || '').toLowerCase();
+
+      return name.includes(normalizedSearch) || vehicleNumber.includes(normalizedSearch);
+    });
+  }, [bookableEmployees, employeeSearchText]);
+
   const zoneAvailability = ['Ground', 'Puzzle', 'Stack'].map((zone) => {
     const zoneSlots = getZoneSlots(zone, parkingData);
     const available = zoneSlots.filter((slot) => slot.allocation === 'Available').length;
@@ -215,17 +212,19 @@ export default function Dashboard() {
     return { zone, available, total, percentage };
   });
 
-  const allocationSummary = ['Allocated', 'Available', 'Reserved', 'Maintenance'].map((statusVal) => {
-    const count = parkingData.filter((slot) => slot.allocation === statusVal).length;
-    const percentage = parkingData.length ? Math.round((count / parkingData.length) * 100) : 0;
+  const allocationSummary = ['Allocated', 'Available', 'Reserved', 'Maintenance'].map((status) => {
+    const count = parkingData.filter((slot) => slot.allocation === status).length;
+    const percentage = Math.round((count / parkingData.length) * 100);
 
-    return { status: statusVal, count, percentage };
+    return { status, count, percentage };
   });
 
   const basementFilteredSlots = parkingData.filter(
     (slot) => basementFilter === 'All' || slot.basement === basementFilter,
   );
 
+  // Booked/occupied slots first, then available ones - order preserved
+  // within each group.
   const sortedFilteredSlots = [...basementFilteredSlots].sort((a, b) => {
     const aAvailable = a.allocation === 'Available' ? 1 : 0;
     const bAvailable = b.allocation === 'Available' ? 1 : 0;
@@ -235,6 +234,8 @@ export default function Dashboard() {
   const totalSlotPages = Math.max(1, Math.ceil(sortedFilteredSlots.length / SLOTS_PER_PAGE));
   const currentSlotPage = Math.min(slotPage, totalSlotPages);
 
+  // Only ever render one page (10 slots) at a time instead of the full
+  // inventory - Previous / Next below step through the rest.
   const liveParkingSlots = sortedFilteredSlots.slice(
     (currentSlotPage - 1) * SLOTS_PER_PAGE,
     currentSlotPage * SLOTS_PER_PAGE,
@@ -262,6 +263,9 @@ export default function Dashboard() {
     };
   });
 
+  // Tower A summary: available/total slot counts per vehicle type (Sedan,
+  // CSUV) broken down by basement (B1, B2, B3). Derived purely from the
+  // existing parkingData - no new business logic, no hardcoded numbers.
   const towerBasements = ['B1', 'B2', 'B3'];
   const towerVehicleTypes = ['Sedan', 'CSUV'];
 
@@ -363,8 +367,23 @@ export default function Dashboard() {
     (slot) => slot.allocation === 'Available' && slot.status !== 'Not Working',
   );
   const selectedEmployee = employees.find((employee) => getEmployeeValue(employee, 'employeeId') === selectedEmployeeId);
+  const employeeVehicleType = selectedEmployee ? getEmployeeValue(selectedEmployee, 'vehicleType') : '';
+
+  // Only show slots compatible with the selected employee's registered
+  // vehicle type. If the employee record has no vehicle type on file, fall
+  // back to showing every available slot rather than hiding everything.
+  const vehicleFilteredSlots = availableSlots.filter(
+    (slot) => !employeeVehicleType || slot.vehicleSlotType === employeeVehicleType,
+  );
+
+  const normalizedSlotSearch = slotSearchText.trim().toLowerCase();
+  const slotAutocompleteResults = vehicleFilteredSlots.filter((slot) =>
+    String(slot.slotNumber || '').toLowerCase().includes(normalizedSlotSearch),
+  );
+
   const bookedVehicles = bookings.filter((booking) => booking.status === 'Booked');
   const enteredVehicles = bookings.filter((booking) => booking.status === 'Entered');
+
 
   const today = new Date();
   const currentWeekdayIndex = (today.getDay() + 6) % 7; // Monday = 0
@@ -373,6 +392,7 @@ export default function Dashboard() {
   const heatmapData = heatmapDays.map((_, weekdayIndex) => {
     const hourlyOccupancy = Array(24).fill(0);
 
+    // Every weekday except today remains neutral at 0%.
     if (weekdayIndex !== currentWeekdayIndex) {
       return hourlyOccupancy;
     }
@@ -396,6 +416,7 @@ export default function Dashboard() {
         0,
       );
 
+      // Future hours have no actual live parking data yet.
       if (hourStart > today) {
         return 0;
       }
@@ -428,43 +449,22 @@ export default function Dashboard() {
     { label: 'Today Occupancy', value: `${occupiedPercentage}%`, icon: FaRoute },
   ];
 
-  // Render loading and error screens
-  if (pageLoading) {
-    return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center gap-3">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-teal-700" />
-        <p className="text-sm font-semibold text-slate-500">Loading dashboard data...</p>
-      </div>
-    );
-  }
-
-  if (pageError) {
-    return (
-      <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 text-center shadow-sm">
-        <h3 className="text-base font-bold text-rose-950">Unable to load dashboard</h3>
-        <p className="mt-1 text-sm text-rose-700">{pageError}</p>
-        <button
-          onClick={async () => {
-            await refreshParking();
-          }}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg bg-rose-700 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-rose-800"
-        >
-          Retry Connection
-        </button>
-      </div>
-    );
-  }
+  const closeOperationModal = () => {
+    setOperation(null);
+    setEmployeeSearchText('');
+    setIsEmployeeResultsOpen(false);
+    setSlotSearchText('');
+    setIsSlotResultsOpen(false);
+  };
 
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-slate-950">Dashboard</h1>
 
-      {/* 1. Live Parking Slots */}
+      {/* Live Parking Slots */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">Live Parking Slots</h2>
-          </div>
+          <h2 className="text-base font-bold text-slate-950">Live Parking Slots</h2>
 
           <div className="flex flex-wrap items-center gap-3">
             <div
@@ -539,12 +539,12 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* 2. Live Status Bar */}
+      {/* Live Status Bar */}
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 shadow-sm">
         <div className="grid gap-4 p-4 text-white lg:grid-cols-[1fr_320px] lg:p-5">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-300">Live Status</p>
-            <h2 className="mt-2 text-xl font-bold tracking-normal sm:text-2xl">Tower A Parking</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-300">Live  Status</p>
+            <h2 className="mt-2 text-xl font-bold tracking-normal sm:text-2xl">Tower A Parking </h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {heroCards.map((item) => (
@@ -575,12 +575,12 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 3. Tower A Summary (left) & Vehicle Type Occupancy (right) */}
+      {/* Tower A Parking Summary & Vehicle Type Occupancy */}
       <section className="grid gap-4 lg:grid-cols-2">
         {/* Tower A Summary Table */}
         <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div>
-            <h2 className="text-base font-bold text-slate-950">Tower A Summary</h2>
+            <h2 className="text-base font-bold text-slate-950">Tower A</h2>
             <p className="mt-0.5 text-sm text-slate-500">
               Available / total slot counts per vehicle type across each basement.
             </p>
@@ -655,9 +655,9 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 4. Quick Action Tiles: Book Parking / Vehicle Entry / Vehicle Exit */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {filteredQuickActions.map((action) => (
+      {/* Quick Action Tiles: Reserved Parking / Vehicle Entry / Vehicle Exit */}
+      <section className="grid grid-cols-3 gap-3">
+        {quickActions.map((action) => (
           <button
             key={action.title}
             className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
@@ -665,10 +665,12 @@ export default function Dashboard() {
             onClick={() => {
               setOperation(action.title);
               setOperationError('');
-              if (user?.role !== 'Employee') {
-                setSelectedEmployeeId('');
-              }
+              setSelectedEmployeeId('');
               setSelectedSlotId('');
+              setEmployeeSearchText('');
+              setIsEmployeeResultsOpen(false);
+              setSlotSearchText('');
+              setIsSlotResultsOpen(false);
             }}
           >
             <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
@@ -683,22 +685,22 @@ export default function Dashboard() {
         ))}
       </section>
 
-      {/* 5. Statistics Cards */}
+      {/* Statistics Cards */}
       <section>
         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-950">Statistics</h2>
-            <p className="text-sm text-slate-500">Calculated from dynamic parking database.</p>
+            <p className="text-sm text-slate-500">Calculated from local parking data.</p>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredMetrics.map((metric) => (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {metrics.map((metric) => (
             <MetricCard key={metric.title} {...metric} />
           ))}
         </div>
       </section>
 
-      {/* 6. Operations Overview */}
+      {/* Operations Overview */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div>
           <h2 className="text-base font-bold text-slate-950">Operations Overview</h2>
@@ -747,17 +749,19 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 7. Parking Overview: Zone Availability, Allocation Summary, Recent Vehicle Activity */}
-      <section>
+      {/* Parking Overview: zone availability, allocation mix, and recent
+          activity now share a single frame, laid out in three equal
+          columns on large screens and stacking on smaller ones. */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3">
           <h2 className="text-lg font-bold text-slate-950">Parking Overview</h2>
-          <p className="text-sm text-slate-500">Zone availability, allocation mix, and recent gate activity.</p>
+          <p className="text-sm text-slate-500">Zone availability, allocation mix, and recent activity.</p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
             <h3 className="text-sm font-bold text-slate-950">Parking Zone Availability</h3>
-            <div className="mt-4 space-y-4">
+            <div className="mt-3 space-y-3">
               {zoneAvailability.map((zone) => (
                 <div key={zone.zone}>
                   <div className="flex items-center justify-between text-sm">
@@ -775,9 +779,9 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
             <h3 className="text-sm font-bold text-slate-950">Allocation Summary</h3>
-            <div className="mt-4 space-y-3">
+            <div className="mt-3 space-y-2.5">
               {allocationSummary.map((item) => (
                 <div key={item.status}>
                   <div className="flex items-center justify-between text-sm">
@@ -790,14 +794,13 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 rounded-lg bg-slate-950 p-3 text-white">
+            <div className="mt-3 rounded-lg bg-slate-950 p-2.5 text-white">
               <p className="text-xs font-semibold text-teal-200">System Health</p>
               <p className="mt-1 text-lg font-bold">98.7%</p>
             </div>
           </div>
 
-          {/* Recent Vehicle Activity - live feed derived from bookings data */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
             <h3 className="text-sm font-bold text-slate-950">Recent Vehicle Activity</h3>
             <div className="mt-3 space-y-2">
               {recentActivityFeed.length > 0 ? (
@@ -833,67 +836,66 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 8. Employee Summary (Restricted to non-Employees) */}
-      {user?.role !== 'Employee' && (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Employee Summary</h2>
-              <p className="text-sm text-slate-500">Search employee parking records synced with the database.</p>
-            </div>
-            <label className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 focus-within:border-teal-600 focus-within:bg-white lg:max-w-md">
-              <FaUsers className="shrink-0 text-slate-400" />
-              <input
-                className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none"
-                placeholder="Search employee ID, name, mobile number..."
-                value={employeeQuery}
-                onChange={(event) => setEmployeeQuery(event.target.value)}
-              />
-            </label>
+      {/* Employee Summary */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Employee Summary</h2>
+            <p className="text-sm text-slate-500">Search employee parking records saved in browser localStorage.</p>
           </div>
+          <label className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 focus-within:border-teal-600 focus-within:bg-white lg:max-w-md">
+            <FaUsers className="shrink-0 text-slate-400" />
+            <input
+              className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none"
+              placeholder="Search employee ID, name, mobile number..."
+              value={employeeQuery}
+              onChange={(event) => setEmployeeQuery(event.target.value)}
+            />
+          </label>
+        </div>
 
-          <div className="mt-4 max-h-64 overflow-hidden rounded-lg border border-slate-200">
-            <div className="scrollbar-thin max-h-64 overflow-auto">
-              <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3 font-bold">Employee ID</th>
-                    <th className="px-4 py-3 font-bold">Employee Name</th>
-                    <th className="px-4 py-3 font-bold">Department</th>
-                    <th className="px-4 py-3 font-bold">Mobile Number</th>
-                    <th className="px-4 py-3 font-bold">Vehicle Number</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredEmployees.length > 0 ? (
-                    filteredEmployees.map((employee, index) => (
-                      <tr key={getEmployeeValue(employee, 'employeeId') || index} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-semibold text-slate-900">{getEmployeeValue(employee, 'employeeId') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'employeeName') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'department') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'mobileNumber') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'vehicleNumber') || '-'}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
-                        No employee records found.
-                      </td>
+        <div className="mt-4 max-h-64 overflow-hidden rounded-lg border border-slate-200">
+          <div className="scrollbar-thin max-h-64 overflow-auto">
+            <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+              <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Employee ID</th>
+                  <th className="px-4 py-3 font-bold">Employee Name</th>
+                  <th className="px-4 py-3 font-bold">Department</th>
+                  <th className="px-4 py-3 font-bold">Mobile Number</th>
+                  <th className="px-4 py-3 font-bold">Vehicle Number</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredEmployees.length > 0 ? (
+                  filteredEmployees.map((employee, index) => (
+                    <tr key={getEmployeeValue(employee, 'employeeId') || index} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{getEmployeeValue(employee, 'employeeId') || '-'}</td>
+                      <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'employeeName') || '-'}</td>
+                      <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'department') || '-'}</td>
+                      <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'mobileNumber') || '-'}</td>
+                      <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'vehicleNumber') || '-'}</td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                      No employee records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/* 9. Traffic Heatmap */}
+      {/* Traffic Heatmap */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-bold text-slate-950">Traffic Heatmap</h2>
+            <p className="text-sm text-slate-500">Demo occupancy intensity by day and time.</p>
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" />
@@ -937,14 +939,14 @@ export default function Dashboard() {
 
       <Modal
         isOpen={Boolean(operation)}
-        onClose={() => setOperation(null)}
+        onClose={closeOperationModal}
         title={operation || ''}
-        size="lg"
+        size={operation === 'Reserved Parking' ? 'sm' : 'lg'}
       >
-        {operation === 'Book Parking' && (
+        {operation === 'Reserved Parking' && (
           <form
-            className="space-y-5"
-            onSubmit={async (event) => {
+            className="space-y-4"
+            onSubmit={(event) => {
               event.preventDefault();
 
               if (!selectedEmployee || !selectedSlotId) {
@@ -953,55 +955,149 @@ export default function Dashboard() {
               }
 
               try {
-                await createBooking({ employee: selectedEmployee, slotId: selectedSlotId });
-                await refreshParking();
+                createBooking({ employee: selectedEmployee, slotId: selectedSlotId });
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);
               }
             }}
           >
-            <div>
+            <div className="relative">
               <label className="text-sm font-bold text-slate-700">Employee</label>
-              <select
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-600 disabled:bg-slate-100 disabled:text-slate-500"
-                value={selectedEmployeeId}
-                onChange={(event) => setSelectedEmployeeId(event.target.value)}
-                disabled={user?.role === 'Employee'}
-              >
-                {user?.role !== 'Employee' && <option value="">Select an employee</option>}
 
-                {bookableEmployees.map((employee) => {
-                  const idVal = getEmployeeValue(employee, 'employeeId');
+              {/* Single searchable autocomplete input. Typing filters by
+                  Employee Name or Vehicle Number in real time; clicking a
+                  result selects that employee immediately - no separate
+                  dropdown, no "Select Employee" click. Booking validation
+                  still reads from `selectedEmployeeId` exactly as before. */}
+              <div className="relative mt-2">
+                <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400" />
+                <input
+                  type="text"
+                  value={employeeSearchText}
+                  onChange={(event) => {
+                    setEmployeeSearchText(event.target.value);
+                    setSelectedEmployeeId('');
+                    setIsEmployeeResultsOpen(true);
+                  }}
+                  onFocus={() => setIsEmployeeResultsOpen(true)}
+                  onBlur={() => {
+                    // Small delay so a click on a result registers before
+                    // the list closes.
+                    window.setTimeout(() => setIsEmployeeResultsOpen(false), 120);
+                  }}
+                  placeholder="Search Employee by Name or Vehicle Number..."
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-teal-600"
+                />
+              </div>
 
-                  return (
-                    <option key={idVal} value={idVal}>
-                      {idVal} - {getEmployeeValue(employee, 'employeeName')} (
-                      {getEmployeeValue(employee, 'vehicleNumber') || 'No vehicle'})
-                    </option>
-                  );
-                })}
-              </select>
+              {isEmployeeResultsOpen && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {employeeAutocompleteResults.length > 0 ? (
+                    employeeAutocompleteResults.map((employee) => {
+                      const id = getEmployeeValue(employee, 'employeeId');
+                      const name = getEmployeeValue(employee, 'employeeName');
+                      const vehicleNumber = getEmployeeValue(employee, 'vehicleNumber');
+
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          // onMouseDown fires before the input's onBlur, so
+                          // the click registers before the list closes.
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setSelectedEmployeeId(id);
+                            setEmployeeSearchText(`${name} - ${id} (${vehicleNumber || 'No vehicle'})`);
+                            setIsEmployeeResultsOpen(false);
+                            // Vehicle-type filtering depends on which
+                            // employee is selected, so any previously
+                            // chosen slot is no longer guaranteed valid.
+                            setSelectedSlotId('');
+                            setSlotSearchText('');
+                            setIsSlotResultsOpen(false);
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-teal-50"
+                        >
+                          <span className="text-sm font-bold text-slate-900">{name}</span>
+                          <span className="text-xs font-semibold text-slate-500">
+                            {id} &middot; {vehicleNumber || 'No vehicle'}
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="px-3 py-3 text-sm font-semibold text-slate-500">
+                      No matching employees found.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="text-sm font-bold text-slate-700">
-                Available parking slot
-              </label>
+            <div className="relative">
+              <label className="text-sm font-bold text-slate-700">Available Parking Slot</label>
 
-              <select
-                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-teal-600"
-                value={selectedSlotId}
-                onChange={(event) => setSelectedSlotId(event.target.value)}
-              >
-                <option value="">Select an available slot</option>
+              {/* Same autocomplete pattern as Employee search above - typing
+                  a slot number filters live, clicking a result selects it.
+                  The candidate list is already narrowed to the selected
+                  employee's registered vehicle type. */}
+              <div className="relative mt-2">
+                <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400" />
+                <input
+                  type="text"
+                  value={slotSearchText}
+                  onChange={(event) => {
+                    setSlotSearchText(event.target.value);
+                    setSelectedSlotId('');
+                    setIsSlotResultsOpen(true);
+                  }}
+                  onFocus={() => setIsSlotResultsOpen(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => setIsSlotResultsOpen(false), 120);
+                  }}
+                  placeholder="Search by slot number (e.g. B1-P01-S1)..."
+                  autoComplete="off"
+                  disabled={!selectedEmployee}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-teal-600 disabled:cursor-not-allowed disabled:bg-slate-50"
+                />
+              </div>
 
-                {availableSlots.map((slot) => (
-                  <option key={slot.id} value={slot.id}>
-                    {slot.slotNumber} - {slot.basement} / {slot.parkingType}
-                  </option>
-                ))}
-              </select>
+              {isSlotResultsOpen && selectedEmployee && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {slotAutocompleteResults.length > 0 ? (
+                    slotAutocompleteResults.map((slot) => (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          setSelectedSlotId(slot.id);
+                          setSlotSearchText(`${slot.slotNumber} - ${slot.basement} / ${slot.parkingType}`);
+                          setIsSlotResultsOpen(false);
+                        }}
+                        className="flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-teal-50"
+                      >
+                        <span className="text-sm font-bold text-slate-900">{slot.slotNumber}</span>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {slot.basement} &middot; {slot.vehicleSlotType}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-3 text-sm font-semibold text-slate-500">
+                      No matching {employeeVehicleType || ''} slots found.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!selectedEmployee && (
+                <p className="mt-1.5 text-xs font-semibold text-slate-400">
+                  Select an employee first to see compatible slots.
+                </p>
+              )}
             </div>
 
             {operationError && (
@@ -1011,10 +1107,10 @@ export default function Dashboard() {
             )}
 
             <button
-              className="w-full rounded-lg bg-teal-700 px-4 py-3 text-sm font-bold text-white hover:bg-teal-800"
+              className="w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800"
               type="submit"
             >
-              Confirm Booking
+              Confirm Reservation
             </button>
           </form>
         )}
@@ -1025,10 +1121,9 @@ export default function Dashboard() {
             emptyMessage="No booked vehicles are waiting for entry."
             actionLabel="Mark Entered"
             error={operationError}
-            onAction={async (booking) => {
+            onAction={(booking) => {
               try {
-                await markVehicleEntered(booking.id);
-                await refreshParking();
+                markVehicleEntered(booking.id);
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);
@@ -1043,10 +1138,9 @@ export default function Dashboard() {
             emptyMessage="No entered vehicles are ready for exit."
             actionLabel="Mark Exited"
             error={operationError}
-            onAction={async (booking) => {
+            onAction={(booking) => {
               try {
-                await markVehicleExited(booking.id);
-                await refreshParking();
+                markVehicleExited(booking.id);
                 setOperation(null);
               } catch (error) {
                 setOperationError(error.message);
@@ -1055,6 +1149,7 @@ export default function Dashboard() {
           />
         )}
       </Modal>
+
     </div>
   );
 }
