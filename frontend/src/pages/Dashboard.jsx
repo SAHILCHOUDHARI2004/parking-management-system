@@ -13,7 +13,6 @@ import {
   FaUserTie,
   FaUsers,
   FaWarehouse,
-  FaBan,
 } from 'react-icons/fa';
 import {
   createBooking,
@@ -28,7 +27,6 @@ import Modal from '../components/Modal.jsx';
 import { getEmployeeValue, useEmployees } from '../utils/employeeStorage.js';
 import { getParkingStats } from '../utils/parkingStats.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { api } from '../api/client.js';
 
 import {
   Bar,
@@ -71,6 +69,13 @@ const heatmapTimes = Array.from({ length: 24 }, (_, hour) => {
 
 const heatmapDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// Icon + color treatment for each Recent Vehicle Activity event type.
+const activityMeta = {
+  'Parking Booked': { icon: FaRegCalendarCheck, tone: 'bg-amber-50 text-amber-700' },
+  'Vehicle Entered': { icon: FaSignInAlt, tone: 'bg-emerald-50 text-emerald-700' },
+  'Vehicle Exited': { icon: FaSignOutAlt, tone: 'bg-slate-100 text-slate-600' },
+};
+
 const basementFilters = ['All', 'B1', 'B2', 'B3'];
 const SLOTS_PER_PAGE = 32;
 
@@ -95,13 +100,23 @@ function getZoneSlots(zone, slots) {
   return slots.filter((slot) => slot.basement === basementMap[zone]);
 }
 
+function getBookingStatusTone(status) {
+  const tones = {
+    Booked: 'bg-amber-50 text-amber-700',
+    Entered: 'bg-emerald-50 text-emerald-700',
+    Exited: 'bg-slate-100 text-slate-600',
+  };
+
+  return tones[status] ?? 'bg-slate-100 text-slate-600';
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { slots: parkingData, bookings, refresh: refreshParking, error: parkingError, isLoading: parkingLoading } = useParkingStore();
   const { employees: fetchedEmployees, error: employeesError, isLoading: employeesLoading } = useEmployees(user?.role !== 'Employee');
 
   const stats = getParkingStats(parkingData, bookings);
-  
+
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [operation, setOperation] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
@@ -109,9 +124,6 @@ export default function Dashboard() {
   const [operationError, setOperationError] = useState('');
   const [basementFilter, setBasementFilter] = useState('All');
   const [slotPage, setSlotPage] = useState(1);
-
-  const [activities, setActivities] = useState([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(true);
 
   // Determine active loading & error states
   const pageLoading = parkingLoading || (user?.role !== 'Employee' && employeesLoading);
@@ -131,56 +143,6 @@ export default function Dashboard() {
       setSelectedEmployeeId(user.employee.employeeId);
     }
   }, [user, operation]);
-
-  // Load audit logs from database
-  useEffect(() => {
-    async function loadRecentActivity() {
-      setActivitiesLoading(true);
-      try {
-        const data = await api('/api/audit-logs?page_size=5&page=1');
-        const mapped = (data.items || []).map((log) => {
-          let details = {};
-          try {
-            details = JSON.parse(log.details || '{}');
-          } catch {
-            details = { vehicle_number: log.details || '-' };
-          }
-
-          let icon = FaRegCalendarCheck;
-          let actionLabel = 'Slot Reserved';
-          if (log.action === 'Entry') {
-            icon = FaSignInAlt;
-            actionLabel = 'Vehicle Entered';
-          } else if (log.action === 'Exit') {
-            icon = FaSignOutAlt;
-            actionLabel = 'Vehicle Exited';
-          } else if (log.action === 'Cancel') {
-            icon = FaBan;
-            actionLabel = 'Booking Cancelled';
-          }
-
-          const dateObj = new Date(log.timestamp);
-          const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-          return {
-            time: timeStr,
-            vehicle: details.vehicle_number || '-',
-            action: actionLabel,
-            zone: details.basement ? `${details.basement} - ${details.slot_number}` : '-',
-            icon,
-          };
-        });
-        setActivities(mapped);
-      } catch (err) {
-        console.error('Failed to load audit logs', err);
-      } finally {
-        setActivitiesLoading(false);
-      }
-    }
-    if (!pageLoading && !pageError) {
-      loadRecentActivity();
-    }
-  }, [bookings, pageLoading, pageError]);
 
   const occupiedPercentage = Math.round((stats.occupiedSlots / stats.totalSlots) * 100) || 0;
   const availablePercentage = Math.round((stats.availableSlots / stats.totalSlots) * 100) || 0;
@@ -320,7 +282,86 @@ export default function Dashboard() {
     return { vehicleType, basementCounts };
   });
 
-  const availableSlots = parkingData.filter((slot) => slot.allocation === 'Available');
+  // Operations Overview: a live feed built entirely from existing booking
+  // data (no dummy rows), most recent activity first.
+  const operationsOverview = [...bookings]
+    .sort((a, b) => {
+      const aTime = new Date(a.exitTime || a.entryTime || a.bookedAt).getTime();
+      const bTime = new Date(b.exitTime || b.entryTime || b.bookedAt).getTime();
+      return bTime - aTime;
+    })
+    .slice(0, 8)
+    .map((booking) => {
+      const matchedSlot = parkingData.find((slot) => slot.id === booking.slotId);
+      const timestamp = booking.exitTime || booking.entryTime || booking.bookedAt;
+
+      return {
+        id: booking.id,
+        vehicleNumber: booking.vehicleNumber || '-',
+        employeeName: booking.employeeName || '-',
+        slotNumber: booking.slotNumber || '-',
+        vehicleType: booking.vehicleType || matchedSlot?.vehicleSlotType || '-',
+        status: booking.status,
+        time: timestamp
+          ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '-',
+      };
+    });
+
+  // Recent Vehicle Activity: derived entirely from the existing bookings
+  // data (no new storage, no dummy rows). Each booking can contribute up
+  // to 3 events - booked / entered / exited - each with its own timestamp.
+  // Sorted newest first and capped at 5 entries.
+  const recentActivityFeed = useMemo(() => {
+    const events = [];
+
+    bookings.forEach((booking) => {
+      if (booking.bookedAt) {
+        events.push({
+          id: `${booking.id}-booked`,
+          type: 'Parking Booked',
+          employeeName: booking.employeeName || '-',
+          vehicleNumber: booking.vehicleNumber || '-',
+          slotNumber: booking.slotNumber || '-',
+          time: booking.bookedAt,
+        });
+      }
+      if (booking.entryTime) {
+        events.push({
+          id: `${booking.id}-entered`,
+          type: 'Vehicle Entered',
+          employeeName: booking.employeeName || '-',
+          vehicleNumber: booking.vehicleNumber || '-',
+          slotNumber: booking.slotNumber || '-',
+          time: booking.entryTime,
+        });
+      }
+      if (booking.exitTime) {
+        events.push({
+          id: `${booking.id}-exited`,
+          type: 'Vehicle Exited',
+          employeeName: booking.employeeName || '-',
+          vehicleNumber: booking.vehicleNumber || '-',
+          slotNumber: booking.slotNumber || '-',
+          time: booking.exitTime,
+        });
+      }
+    });
+
+    return events
+      .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+      .slice(0, 5)
+      .map((event) => ({
+        ...event,
+        formattedTime: new Date(event.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }));
+  }, [bookings]);
+
+  // Available slots eligible for booking must be allocation-Available AND
+  // Working - a slot flagged Not Working is excluded from booking entirely.
+  const availableSlots = parkingData.filter(
+    (slot) => slot.allocation === 'Available' && slot.status !== 'Not Working',
+  );
   const selectedEmployee = employees.find((employee) => getEmployeeValue(employee, 'employeeId') === selectedEmployeeId);
   const bookedVehicles = bookings.filter((booking) => booking.status === 'Booked');
   const enteredVehicles = bookings.filter((booking) => booking.status === 'Entered');
@@ -418,301 +459,7 @@ export default function Dashboard() {
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-slate-950">Dashboard</h1>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 shadow-sm">
-        <div className="grid gap-4 p-4 text-white lg:grid-cols-[1fr_320px] lg:p-5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-300">Live Status</p>
-            <h2 className="mt-2 text-xl font-bold tracking-normal sm:text-2xl">Tower A Parking</h2>
-            
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              {heroCards.map((item) => (
-                <div key={item.label} className="rounded-lg border border-white/10 bg-white/10 p-3">
-                  <item.icon className="text-lg text-teal-300" />
-                  <p className="mt-2 text-xl font-bold">{item.value}</p>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-white/10 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-300">Available Now</p>
-                <p className="mt-1 text-3xl font-bold text-white">{stats.availableSlots}</p>
-              </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-400/20 text-teal-200">
-                <FaParking className="text-xl" />
-              </div>
-            </div>
-            <div className="mt-4 h-2.5 rounded-full bg-white/10">
-              <div className="h-2.5 rounded-full bg-teal-300" style={{ width: `${availablePercentage}%` }} />
-            </div>
-            <p className="mt-2 text-xs text-slate-300">{availablePercentage}% of total slots are available for allocation.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Tower A Summary & Vehicle Type Occupancy */}
-      <section className="grid gap-4 lg:grid-cols-2">
-        {/* Tower A Summary Table */}
-        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">Tower A Summary</h2>
-            <p className="mt-0.5 text-sm text-slate-500">
-              Available / total slot counts per vehicle type across each basement.
-            </p>
-          </div>
-
-          <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-slate-200">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-bold">Vehicle Type</th>
-                  {towerBasements.map((basement) => (
-                    <th key={basement} className="px-4 py-3 text-center font-bold">
-                      {basement}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {towerSummary.map((row) => (
-                  <tr key={row.vehicleType} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold text-slate-900">{row.vehicleType}</td>
-                    {row.basementCounts.map(({ basement, available, total }) => (
-                      <td key={basement} className="px-4 py-3 text-center">
-                        <span className="font-bold text-emerald-600">{available}</span>
-                        <span className="text-slate-400"> / </span>
-                        <span className="font-bold text-slate-950">{total}</span>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Vehicle Type Occupancy */}
-        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div>
-            <h2 className="text-base font-bold text-slate-950">Vehicle Type Occupancy</h2>
-            <p className="mt-0.5 text-sm text-slate-500">
-              Live occupied and available slot counts by vehicle type.
-            </p>
-          </div>
-
-          <div className="mt-3 h-44 flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={occupancyChartData}
-                margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="vehicleType" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} width={30} />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: '12px' }} />
-
-                <Bar
-                  dataKey="occupied"
-                  name="Occupied"
-                  fill="#0f766e"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="available"
-                  name="Available"
-                  fill="#38bdf8"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
-
-      {/* Statistics Cards */}
-      <section>
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-950">Statistics</h2>
-            <p className="text-sm text-slate-500">Calculated from dynamic parking database.</p>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredMetrics.map((metric) => (
-            <MetricCard key={metric.title} {...metric} />
-          ))}
-        </div>
-      </section>
-
-      {/* Quick Action Tiles */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {filteredQuickActions.map((action) => (
-          <button
-            key={action.title}
-            className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
-            type="button"
-            onClick={() => {
-              setOperation(action.title);
-              setOperationError('');
-              if (user?.role !== 'Employee') {
-                setSelectedEmployeeId('');
-              }
-              setSelectedSlotId('');
-            }}
-          >
-            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
-              <action.icon className="text-sm" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-sm font-bold text-slate-950">{action.title}</h2>
-              <p className="hidden truncate text-xs text-slate-500 sm:block">{action.description}</p>
-            </div>
-            <FaArrowRight className="hidden shrink-0 text-xs text-slate-300 transition group-hover:translate-x-1 group-hover:text-teal-700 sm:block" />
-          </button>
-        ))}
-      </section>
-
-      {/* Employee Summary (Restricted to non-Employees) */}
-      {user?.role !== 'Employee' && (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-950">Employee Summary</h2>
-              <p className="text-sm text-slate-500">Search employee parking records synced with the database.</p>
-            </div>
-            <label className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 focus-within:border-teal-600 focus-within:bg-white lg:max-w-md">
-              <FaUsers className="shrink-0 text-slate-400" />
-              <input
-                className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none"
-                placeholder="Search employee ID, name, mobile number..."
-                value={employeeQuery}
-                onChange={(event) => setEmployeeQuery(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="mt-4 max-h-64 overflow-hidden rounded-lg border border-slate-200">
-            <div className="scrollbar-thin max-h-64 overflow-auto">
-              <table className="min-w-[760px] w-full border-collapse text-left text-sm">
-                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3 font-bold">Employee ID</th>
-                    <th className="px-4 py-3 font-bold">Employee Name</th>
-                    <th className="px-4 py-3 font-bold">Department</th>
-                    <th className="px-4 py-3 font-bold">Mobile Number</th>
-                    <th className="px-4 py-3 font-bold">Vehicle Number</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredEmployees.length > 0 ? (
-                    filteredEmployees.map((employee, index) => (
-                      <tr key={getEmployeeValue(employee, 'employeeId') || index} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-semibold text-slate-900">{getEmployeeValue(employee, 'employeeId') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'employeeName') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'department') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'mobileNumber') || '-'}</td>
-                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'vehicleNumber') || '-'}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
-                        No employee records found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Parking Overview */}
-      <section>
-        <div className="mb-3">
-          <h2 className="text-lg font-bold text-slate-950">Parking Overview</h2>
-          <p className="text-sm text-slate-500">Zone availability, allocation mix, and recent gate activity.</p>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-950">Parking Zone Availability</h3>
-            <div className="mt-4 space-y-4">
-              {zoneAvailability.map((zone) => (
-                <div key={zone.zone}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-bold text-slate-700">{zone.zone}</span>
-                    <span className="font-bold text-slate-950">{zone.percentage}%</span>
-                  </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full rounded-full bg-teal-700" style={{ width: `${zone.percentage}%` }} />
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {zone.available} available of {zone.total} slots
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-950">Allocation Summary</h3>
-            <div className="mt-4 space-y-3">
-              {allocationSummary.map((item) => (
-                <div key={item.status}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold text-slate-600">{item.status}</span>
-                    <span className="font-bold text-slate-950">{item.count}</span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 rounded-full bg-slate-100">
-                    <div className="h-1.5 rounded-full bg-teal-700" style={{ width: `${item.percentage}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-lg bg-slate-950 p-3 text-white">
-              <p className="text-xs font-semibold text-teal-200">System Health</p>
-              <p className="mt-1 text-lg font-bold">98.7%</p>
-            </div>
-          </div>
-
-          {/* Recent Activity (backed by database audit logs) */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-950">Recent Vehicle Activity</h3>
-            {activitiesLoading ? (
-              <div className="flex py-12 justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-teal-700" />
-              </div>
-            ) : activities.length > 0 ? (
-              <div className="mt-3 space-y-2.5">
-                {activities.map((activity, idx) => (
-                  <div key={idx} className="flex gap-2.5 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white text-teal-700 shadow-sm">
-                      <activity.icon className="text-sm" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-xs font-bold text-slate-950">{activity.vehicle}</p>
-                        <p className="shrink-0 text-[11px] font-semibold text-slate-400">{activity.time}</p>
-                      </div>
-                      <p className="mt-0.5 text-xs text-slate-600">{activity.action} &middot; {activity.zone}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="py-8 text-center text-xs text-slate-500">No recent activity logged.</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Live Parking Slots */}
+      {/* 1. Live Parking Slots */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -792,7 +539,357 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Traffic Heatmap */}
+      {/* 2. Live Status Bar */}
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 shadow-sm">
+        <div className="grid gap-4 p-4 text-white lg:grid-cols-[1fr_320px] lg:p-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-300">Live Status</p>
+            <h2 className="mt-2 text-xl font-bold tracking-normal sm:text-2xl">Tower A Parking</h2>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {heroCards.map((item) => (
+                <div key={item.label} className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <item.icon className="text-lg text-teal-300" />
+                  <p className="mt-2 text-xl font-bold">{item.value}</p>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/10 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-slate-300">Available Now</p>
+                <p className="mt-1 text-3xl font-bold text-white">{stats.availableSlots}</p>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-400/20 text-teal-200">
+                <FaParking className="text-xl" />
+              </div>
+            </div>
+            <div className="mt-4 h-2.5 rounded-full bg-white/10">
+              <div className="h-2.5 rounded-full bg-teal-300" style={{ width: `${availablePercentage}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-slate-300">{availablePercentage}% of total slots are available for allocation.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Tower A Summary (left) & Vehicle Type Occupancy (right) */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        {/* Tower A Summary Table */}
+        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Tower A Summary</h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Available / total slot counts per vehicle type across each basement.
+            </p>
+          </div>
+
+          <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead className="bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Vehicle Type</th>
+                  {towerBasements.map((basement) => (
+                    <th key={basement} className="px-4 py-3 text-center font-bold">
+                      {basement}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {towerSummary.map((row) => (
+                  <tr key={row.vehicleType} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{row.vehicleType}</td>
+                    {row.basementCounts.map(({ basement, available, total }) => (
+                      <td key={basement} className="px-4 py-3 text-center">
+                        <span className="font-bold text-emerald-600">{available}</span>
+                        <span className="text-slate-400"> / </span>
+                        <span className="font-bold text-slate-950">{total}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Vehicle Type Occupancy */}
+        <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="text-base font-bold text-slate-950">Vehicle Type Occupancy</h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              Live occupied and available slot counts by vehicle type.
+            </p>
+          </div>
+
+          <div className="mt-3 h-44 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={occupancyChartData}
+                margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="vehicleType" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} width={30} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
+
+                <Bar
+                  dataKey="occupied"
+                  name="Occupied"
+                  fill="#0f766e"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  dataKey="available"
+                  name="Available"
+                  fill="#38bdf8"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Quick Action Tiles: Book Parking / Vehicle Entry / Vehicle Exit */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {filteredQuickActions.map((action) => (
+          <button
+            key={action.title}
+            className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md sm:p-3.5"
+            type="button"
+            onClick={() => {
+              setOperation(action.title);
+              setOperationError('');
+              if (user?.role !== 'Employee') {
+                setSelectedEmployeeId('');
+              }
+              setSelectedSlotId('');
+            }}
+          >
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${action.accent}`}>
+              <action.icon className="text-sm" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-sm font-bold text-slate-950">{action.title}</h2>
+              <p className="hidden truncate text-xs text-slate-500 sm:block">{action.description}</p>
+            </div>
+            <FaArrowRight className="hidden shrink-0 text-xs text-slate-300 transition group-hover:translate-x-1 group-hover:text-teal-700 sm:block" />
+          </button>
+        ))}
+      </section>
+
+      {/* 5. Statistics Cards */}
+      <section>
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">Statistics</h2>
+            <p className="text-sm text-slate-500">Calculated from dynamic parking database.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredMetrics.map((metric) => (
+            <MetricCard key={metric.title} {...metric} />
+          ))}
+        </div>
+      </section>
+
+      {/* 6. Operations Overview */}
+      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h2 className="text-base font-bold text-slate-950">Operations Overview</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Live vehicle activity from current bookings.</p>
+        </div>
+
+        <div className="mt-3 max-h-64 overflow-hidden rounded-lg border border-slate-200">
+          <div className="scrollbar-thin max-h-64 overflow-auto">
+            <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+              <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Vehicle No.</th>
+                  <th className="px-4 py-3 font-bold">Employee</th>
+                  <th className="px-4 py-3 font-bold">Slot</th>
+                  <th className="px-4 py-3 font-bold">Type</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
+                  <th className="px-4 py-3 font-bold">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {operationsOverview.length > 0 ? (
+                  operationsOverview.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-semibold text-slate-900">{row.vehicleNumber}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.employeeName}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.slotNumber}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.vehicleType}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${getBookingStatusTone(row.status)}`}>
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{row.time}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                      No booking activity yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Parking Overview: Zone Availability, Allocation Summary, Recent Vehicle Activity */}
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-slate-950">Parking Overview</h2>
+          <p className="text-sm text-slate-500">Zone availability, allocation mix, and recent gate activity.</p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-950">Parking Zone Availability</h3>
+            <div className="mt-4 space-y-4">
+              {zoneAvailability.map((zone) => (
+                <div key={zone.zone}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-bold text-slate-700">{zone.zone}</span>
+                    <span className="font-bold text-slate-950">{zone.percentage}%</span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full bg-teal-700" style={{ width: `${zone.percentage}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {zone.available} available of {zone.total} slots
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-950">Allocation Summary</h3>
+            <div className="mt-4 space-y-3">
+              {allocationSummary.map((item) => (
+                <div key={item.status}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold text-slate-600">{item.status}</span>
+                    <span className="font-bold text-slate-950">{item.count}</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-slate-100">
+                    <div className="h-1.5 rounded-full bg-teal-700" style={{ width: `${item.percentage}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 rounded-lg bg-slate-950 p-3 text-white">
+              <p className="text-xs font-semibold text-teal-200">System Health</p>
+              <p className="mt-1 text-lg font-bold">98.7%</p>
+            </div>
+          </div>
+
+          {/* Recent Vehicle Activity - live feed derived from bookings data */}
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-950">Recent Vehicle Activity</h3>
+            <div className="mt-3 space-y-2">
+              {recentActivityFeed.length > 0 ? (
+                recentActivityFeed.map((activity) => {
+                  const meta = activityMeta[activity.type] ?? activityMeta['Parking Booked'];
+                  const ActivityIcon = meta.icon;
+
+                  return (
+                    <div key={activity.id} className="flex gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2">
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md shadow-sm ${meta.tone}`}>
+                        <ActivityIcon className="text-xs" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-xs font-bold text-slate-950">{activity.vehicleNumber}</p>
+                          <p className="shrink-0 text-[10px] font-semibold text-slate-400">{activity.formattedTime}</p>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-slate-600">
+                          {activity.employeeName} &middot; {activity.slotNumber}
+                        </p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{activity.type}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="py-6 text-center text-xs font-semibold text-slate-500">
+                  No recent parking activity.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 8. Employee Summary (Restricted to non-Employees) */}
+      {user?.role !== 'Employee' && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-950">Employee Summary</h2>
+              <p className="text-sm text-slate-500">Search employee parking records synced with the database.</p>
+            </div>
+            <label className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 focus-within:border-teal-600 focus-within:bg-white lg:max-w-md">
+              <FaUsers className="shrink-0 text-slate-400" />
+              <input
+                className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none"
+                placeholder="Search employee ID, name, mobile number..."
+                value={employeeQuery}
+                onChange={(event) => setEmployeeQuery(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 max-h-64 overflow-hidden rounded-lg border border-slate-200">
+            <div className="scrollbar-thin max-h-64 overflow-auto">
+              <table className="min-w-[760px] w-full border-collapse text-left text-sm">
+                <thead className="sticky top-0 bg-slate-100 text-xs uppercase tracking-[0.12em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-bold">Employee ID</th>
+                    <th className="px-4 py-3 font-bold">Employee Name</th>
+                    <th className="px-4 py-3 font-bold">Department</th>
+                    <th className="px-4 py-3 font-bold">Mobile Number</th>
+                    <th className="px-4 py-3 font-bold">Vehicle Number</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredEmployees.length > 0 ? (
+                    filteredEmployees.map((employee, index) => (
+                      <tr key={getEmployeeValue(employee, 'employeeId') || index} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-semibold text-slate-900">{getEmployeeValue(employee, 'employeeId') || '-'}</td>
+                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'employeeName') || '-'}</td>
+                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'department') || '-'}</td>
+                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'mobileNumber') || '-'}</td>
+                        <td className="px-4 py-3 text-slate-700">{getEmployeeValue(employee, 'vehicleNumber') || '-'}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
+                        No employee records found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* 9. Traffic Heatmap */}
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
