@@ -1,6 +1,8 @@
+import os
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.dependencies import (
@@ -18,8 +20,17 @@ from app.schemas.token import Token
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
+
+def refresh_cookie_secure() -> bool:
+    is_production = os.getenv("APP_ENV", "development").lower() == "production"
+    configured = os.getenv("COOKIE_SECURE")
+    secure = is_production if configured is None else configured.lower() in ("true", "1", "yes")
+    if is_production and not secure:
+        raise RuntimeError("COOKIE_SECURE must be true when APP_ENV is production.")
+    return secure
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
+def register_user(user_in: UserCreate, request: Request, db: Session = Depends(get_db)):
     # Check if username or email already exists
     existing_user = db.query(User).filter(
         (User.username == user_in.username) | (User.email == user_in.email)
@@ -30,6 +41,10 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
             detail="Username or email already registered"
         )
     
+    bootstrap_token = os.getenv("BOOTSTRAP_ADMIN_TOKEN")
+    if not bootstrap_token or request.headers.get("X-Bootstrap-Token") != bootstrap_token:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Initial administrator creation requires a valid bootstrap token.")
+
     total_users = db.query(User).count()
     if total_users > 0:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Public registration is disabled. Ask an administrator to create your account.")
@@ -55,7 +70,7 @@ def login_for_access_token(
     db: Session = Depends(get_db)
 ):
     # Retrieve user
-    user = db.query(User).filter(User.username == form_data.username).first()
+    user = db.query(User).filter(or_(User.username == form_data.username, User.email == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -80,7 +95,7 @@ def login_for_access_token(
     )
     
     import os
-    cookie_secure = os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1", "yes")
+    cookie_secure = refresh_cookie_secure()
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -89,7 +104,7 @@ def login_for_access_token(
         expires=7 * 24 * 60 * 60,
         samesite="lax",
         secure=cookie_secure,
-        path="/"
+        path="/api/auth"
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -139,7 +154,7 @@ def refresh_access_token(
     new_refresh_token = create_refresh_token(data={"sub": user.username})
     
     import os
-    cookie_secure = os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1", "yes")
+    cookie_secure = refresh_cookie_secure()
     response.set_cookie(
         key="refresh_token",
         value=new_refresh_token,
@@ -148,13 +163,13 @@ def refresh_access_token(
         expires=7 * 24 * 60 * 60,
         samesite="lax",
         secure=cookie_secure,
-        path="/"
+        path="/api/auth"
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/logout")
 def logout(response: Response):
-    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("refresh_token", path="/api/auth")
     return {"detail": "Successfully logged out"}
 
 @router.get("/me", response_model=UserOut)

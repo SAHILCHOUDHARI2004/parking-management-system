@@ -21,7 +21,8 @@ function mapEmployee(item) {
     employeeName: item.name,
     mobileNumber: item.contact_details || '',
     aadhaarNumber: item.aadhaar_number || '',
-    vehicleNumber: item.vehicle_number,
+  vehicleNumber: item.vehicle_number,
+  vehicleType: item.vehicle_type,
     department: item.department || ''
   };
 }
@@ -34,6 +35,7 @@ export async function addEmployee(employee) {
         employee_id: employee.employeeId,
         name: employee.employeeName,
         vehicle_number: employee.vehicleNumber,
+        vehicle_type: employee.vehicleType,
         department: employee.department || null,
         contact_details: employee.mobileNumber || null,
         aadhaar_number: employee.aadhaarNumber || null

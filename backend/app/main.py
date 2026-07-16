@@ -23,6 +23,9 @@ origins = [origin.strip() for origin in os.getenv(
     "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",") if origin.strip()]
 
+if "*" in origins:
+    raise RuntimeError("CORS_ORIGINS must list explicit origins when credentials are enabled.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -13,13 +13,13 @@ router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
 
 @router.get("", response_model=BookingPaginated)
 def read_bookings(
-    page: Optional[int] = None,
-    page_size: Optional[int] = 10,
-    status_filter: Optional[str] = None,
+    page: Optional[int] = Query(None, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    status_filter: Optional[BookingStatus] = None,
     employee_id: Optional[int] = None,
     search: Optional[str] = None,
-    sort_by: str = "created_at",
-    sort_order: str = "desc",
+    sort_by: str = Query("created_at", regex="^(id|created_at|status|check_in_time|check_out_time)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user = Depends(require_employee)  # Allow employees to view their own bookings
 ):
@@ -51,7 +51,7 @@ def read_bookings(
         )
         
     # Stable sorting
-    sort_attr = getattr(Booking, sort_by, Booking.created_at)
+    sort_attr = {"id": Booking.id, "created_at": Booking.created_at, "status": Booking.status, "check_in_time": Booking.check_in_time, "check_out_time": Booking.check_out_time}[sort_by]
     if sort_order == "desc":
         query = query.order_by(sort_attr.desc(), Booking.id.desc())
     else:

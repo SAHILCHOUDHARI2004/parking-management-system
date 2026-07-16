@@ -25,5 +25,5 @@ class ParkingSlot(Base):
 
 
     # Relationships
-    bookings = relationship("Booking", back_populates="parking_slot", cascade="all, delete-orphan")
+    bookings = relationship("Booking", back_populates="parking_slot")
 
