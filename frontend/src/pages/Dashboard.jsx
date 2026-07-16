@@ -189,23 +189,6 @@ export default function Dashboard() {
     return quickActions;
   }, [user]);
 
-  if (pageLoading) {
-    return (
-      <div className="flex min-h-[360px] items-center justify-center bg-slate-50 rounded-lg">
-        <p className="text-sm font-semibold text-slate-500">Loading parking inventory...</p>
-      </div>
-    );
-  }
-
-  if (pageError) {
-    return (
-      <div className="rounded-lg bg-rose-50 p-4 border border-rose-100">
-        <p className="text-sm font-bold text-rose-800">Error loading dashboard</p>
-        <p className="mt-1 text-sm text-rose-700">{pageError}</p>
-      </div>
-    );
-  }
-
   const filteredEmployees = useMemo(() => {
     const normalizedQuery = employeeQuery.trim().toLowerCase();
 
@@ -514,6 +497,23 @@ export default function Dashboard() {
     setSlotSearchText('');
     setIsSlotResultsOpen(false);
   };
+
+  if (pageLoading) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center bg-slate-50 rounded-lg">
+        <p className="text-sm font-semibold text-slate-500">Loading parking inventory...</p>
+      </div>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <div className="rounded-lg bg-rose-50 p-4 border border-rose-100">
+        <p className="text-sm font-bold text-rose-800">Error loading dashboard</p>
+        <p className="mt-1 text-sm text-rose-700">{pageError}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
