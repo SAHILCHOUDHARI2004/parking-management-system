@@ -13,8 +13,8 @@ class Booking(Base):
     __tablename__ = "bookings"
 
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
-    parking_slot_id = Column(Integer, ForeignKey("parking_slots.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    parking_slot_id = Column(Integer, ForeignKey("parking_slots.id"), nullable=False)
     status = Column(Enum(BookingStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=BookingStatus.BOOKED, nullable=False)
 
     check_in_time = Column(DateTime(timezone=True), nullable=True)
@@ -30,6 +30,12 @@ class Booking(Base):
         Index(
             "ix_bookings_active_employee",
             "employee_id",
+            unique=True,
+            postgresql_where=text("status IN ('Booked', 'Entered')")
+        ),
+        Index(
+            "ix_bookings_active_slot",
+            "parking_slot_id",
             unique=True,
             postgresql_where=text("status IN ('Booked', 'Entered')")
         ),

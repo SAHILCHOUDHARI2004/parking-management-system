@@ -2,6 +2,7 @@ import logging
 import json
 from datetime import datetime, timezone
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.models.booking import Booking, BookingStatus
 from app.models.parking_slot import ParkingSlot, SlotStatus
@@ -12,7 +13,7 @@ class BookingService:
     @staticmethod
     def create_booking(db: Session, employee_id: int, parking_slot_id: int, performed_by_id: int) -> Booking:
         # 1. Verify employee exists
-        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        employee = db.query(Employee).filter(Employee.id == employee_id).with_for_update().first()
         if not employee:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -42,6 +43,12 @@ class BookingService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Parking slot {slot.slot_number} is not available (current status: {slot.status.value})"
+            )
+
+        if slot.vehicle_type != employee.vehicle_type:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Slot {slot.slot_number} supports {slot.vehicle_type}, not {employee.vehicle_type}."
             )
 
         # 4. Create booking and update slot status
@@ -74,7 +81,10 @@ class BookingService:
             db.commit()
             db.refresh(new_booking)
             return new_booking
-        except Exception as e:
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The employee or parking slot already has an active booking.")
+        except Exception:
             db.rollback()
             logging.exception("Database error during booking creation")
             raise HTTPException(

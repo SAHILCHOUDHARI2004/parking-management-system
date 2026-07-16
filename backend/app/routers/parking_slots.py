@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import Optional
 from pydantic import BaseModel
 
-from app.dependencies import get_db, require_admin, require_security
+from app.dependencies import get_db, require_admin, require_employee, require_security
 from app.models.parking_slot import ParkingSlot
+from app.models.booking import Booking, BookingStatus
 from app.schemas.parking_slot import ParkingSlotCreate, ParkingSlotOut, ParkingSlotUpdate, ParkingSlotPaginated
 
 router = APIRouter(prefix="/api/parking-slots", tags=["Parking Slots"])
@@ -14,16 +15,16 @@ class ParkingSlotBulkImport(BaseModel):
 
 @router.get("", response_model=ParkingSlotPaginated)
 def read_parking_slots(
-    page: Optional[int] = None,
-    page_size: Optional[int] = 10,
+    page: Optional[int] = Query(None, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     basement: Optional[str] = None,
     status_filter: Optional[str] = None,
     vehicle_type: Optional[str] = None,
     search: Optional[str] = None,
-    sort_by: str = "slot_number",
-    sort_order: str = "asc",
+    sort_by: str = Query("slot_number", regex="^(id|slot_number|basement|vehicle_type|status)$"),
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    current_user = Depends(require_security)
+    current_user = Depends(require_employee)
 ):
     query = db.query(ParkingSlot)
     if basement:
@@ -46,7 +47,7 @@ def read_parking_slots(
         )
         
     # Stable sorting
-    sort_attr = getattr(ParkingSlot, sort_by, ParkingSlot.slot_number)
+    sort_attr = {"id": ParkingSlot.id, "slot_number": ParkingSlot.slot_number, "basement": ParkingSlot.basement, "vehicle_type": ParkingSlot.vehicle_type, "status": ParkingSlot.status}[sort_by]
     if sort_order == "desc":
         query = query.order_by(sort_attr.desc(), ParkingSlot.id.desc())
     else:
@@ -103,7 +104,7 @@ def bulk_import_parking_slots(payload: ParkingSlotBulkImport, db: Session = Depe
 def read_parking_slot(
     slot_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_security)
+    current_user = Depends(require_employee)
 ):
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == slot_id).first()
     if not slot:
@@ -122,6 +123,12 @@ def update_parking_slot(
         raise HTTPException(status_code=404, detail="Parking slot not found")
         
     update_data = slot_in.dict(exclude_unset=True)
+    if "status" in update_data and update_data["status"] != slot.status:
+        if current_user.role != "Admin":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only administrators can change a slot's availability status.")
+        active_booking = db.query(Booking).filter(Booking.parking_slot_id == slot.id, Booking.status.in_([BookingStatus.BOOKED, BookingStatus.ENTERED])).first()
+        if active_booking:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A slot with an active booking cannot be moved to maintenance or made available manually.")
     for field, value in update_data.items():
         setattr(slot, field, value)
         
@@ -138,6 +145,8 @@ def delete_parking_slot(
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == slot_id).first()
     if not slot:
         raise HTTPException(status_code=404, detail="Parking slot not found")
+    if db.query(Booking).filter(Booking.parking_slot_id == slot.id).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Parking slots with booking history cannot be deleted. Mark the slot as Maintenance instead.")
     db.delete(slot)
     db.commit()
     return None

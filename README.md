@@ -2,6 +2,25 @@
 
 React/Vite frontend with a FastAPI and PostgreSQL backend for booking, entry, and exit of employee vehicles.
 
+## Deployment
+
+The API requires `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, and `BOOTSTRAP_ADMIN_TOKEN` in `backend/.env`. In production also set `COOKIE_SECURE=true` and use HTTPS. Apply the schema before starting the service:
+
+```powershell
+npm run install:all
+npm run db:migrate
+```
+
+Create the one initial administrator once, then remove `BOOTSTRAP_ADMIN_TOKEN` from the running environment:
+
+```http
+POST /api/auth/register
+X-Bootstrap-Token: <BOOTSTRAP_ADMIN_TOKEN>
+Content-Type: application/json
+```
+
+The bootstrap endpoint creates an Admin only while the users table is empty. All later account creation should be controlled through an authenticated administrative workflow.
+
 ## Vehicle gate API
 
 The booking is the source of truth for vehicle number, employee, and parking slot. Therefore, an entry or exit request only needs the `bookingId` in its URL. Do not send a vehicle number, slot, or timestamp from the browser: the API gets those from the booking and records the server time, which avoids incorrect or tampered gate records.

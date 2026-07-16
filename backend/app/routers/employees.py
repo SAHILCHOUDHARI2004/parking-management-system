@@ -1,16 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db, require_admin, require_security
 from app.models.employee import Employee
+from app.models.booking import Booking
 from app.schemas.employee import EmployeeCreate, EmployeeOut, EmployeeUpdate
 
 router = APIRouter(prefix="/api/employees", tags=["Employees"])
 
 @router.get("", response_model=list[EmployeeOut])
 def read_employees(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user = Depends(require_security)
 ):
@@ -85,6 +86,8 @@ def delete_employee(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Employee not found"
         )
+    if db.query(Booking).filter(Booking.employee_id == employee.id).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employees with booking history cannot be deleted. Deactivate the linked user instead.")
     db.delete(employee)
     db.commit()
     return None

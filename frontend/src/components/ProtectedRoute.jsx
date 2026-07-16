@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom'
 
-export default function ProtectedRoute({ isAuthenticated, isLoading, children }) {
+export default function ProtectedRoute({ isAuthenticated, isLoading, user, allowedRoles, children }) {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-navy-50">
@@ -11,6 +11,10 @@ export default function ProtectedRoute({ isAuthenticated, isLoading, children })
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return children
