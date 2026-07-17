@@ -2,14 +2,55 @@
 
 React/Vite frontend with a FastAPI and PostgreSQL backend for booking, entry, and exit of employee vehicles.
 
-## Deployment
+## Running the Project
 
-The API requires `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, and `BOOTSTRAP_ADMIN_TOKEN` in `backend/.env`. In production also set `COOKIE_SECURE=true` and use HTTPS. Apply the schema before starting the service:
+You can run the project using **Docker** (recommended) or locally.
 
-```powershell
-npm run install:all
-npm run db:migrate
-```
+### 1. Using Docker (Recommended)
+The entire application (PostgreSQL, FastAPI backend, React frontend) is containerized. You only need Docker Desktop installed.
+
+*   **Start the application:**
+    ```powershell
+    docker compose up -d
+    ```
+    Once started, the services are available at:
+    *   **Frontend:** [http://localhost](http://localhost) (Port 80)
+    *   **Backend & API Docs:** [http://localhost:5000/docs](http://localhost:5000/docs)
+
+*   **View live logs:**
+    ```powershell
+    docker compose logs -f
+    ```
+
+*   **Stop the application:**
+    ```powershell
+    docker compose down
+    ```
+
+*   **Rebuild containers after code changes:**
+    ```powershell
+    docker compose up -d --build
+    ```
+
+### 2. Local Development (Alternative)
+To run the services locally with hot-reloading (requires Node.js, Python/`uv`, and a database):
+
+*   **Option A (Hybrid - Recommended):** Run only the database in Docker, and the frontend/backend locally:
+    ```powershell
+    docker compose up -d db
+    npm run dev
+    ```
+
+*   **Option B (Fully Local):** Make sure a local PostgreSQL instance is running, set up configurations, and run:
+    ```powershell
+    npm run install:all
+    npm run db:migrate
+    npm run dev
+    ```
+
+## Initial Setup & Administration
+The API requires `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, and `BOOTSTRAP_ADMIN_TOKEN` in `backend/.env`. In production also set `COOKIE_SECURE=true` and use HTTPS.
+
 
 Create the one initial administrator once, then remove `BOOTSTRAP_ADMIN_TOKEN` from the running environment:
 
