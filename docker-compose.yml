@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: AdminPassword123
       POSTGRES_DB: pms_db
     ports:
-      - "5432:5432"
+      
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,9 +21,7 @@ services:
       - pms_network
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: kaushalraj22/parking-management-system-backend:latest
     container_name: pms_backend
     restart: always
     environment:
@@ -46,13 +44,11 @@ services:
       - pms_network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: kaushalraj22/parking-management-system-frontend:latest
     container_name: pms_frontend
     restart: always
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
     networks:
