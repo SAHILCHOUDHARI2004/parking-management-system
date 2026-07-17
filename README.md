@@ -14,7 +14,7 @@ The entire application (PostgreSQL, FastAPI backend, React frontend) is containe
     docker compose up -d
     ```
     Once started, the services are available at:
-    *   **Frontend:** [http://localhost](http://localhost) (Port 80)
+    *   **Frontend:** [http://localhost:5001](http://localhost:5001) (Port 5001)
     *   **Backend & API Docs:** [http://localhost:5000/docs](http://localhost:5000/docs)
 
 *   **View live logs:**
